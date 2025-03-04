@@ -21,6 +21,21 @@ import datetime
 
 __version__ = "1.0.0"
 
+
+def read_non_comments(path: Path) -> list[str]:
+    """Read non-empty non-comment lines from that path"""
+    if not path.is_file():
+        return []
+    all_lines = path.read_text().splitlines()
+    return [_ for _ in all_lines if _ and not _.startswith('#')]
+
+
+def read_globs(path: Path, base_patterns: list[str]) -> list[str]:
+    """Strip any '/' used for dirs in the lines at that path"""
+    lines = read_non_comments(path)
+    return [_.rstrip('/') for _ in lines if _ not in base_patterns]
+
+
 # Structure to represent a node in the file tree
 class Node:
     def __init__(self, name, is_dir, parent=None):
@@ -41,10 +56,16 @@ class Node:
             return parent_path + self.name
         return parent_path + os.sep + self.name
 
+
 def build_file_tree(root_path, ignore_patterns=None):
     """Build a tree representing the file structure."""
     if ignore_patterns is None:
-        ignore_patterns = ['.git', '__pycache__', '*.pyc', '.DS_Store', '.idea', '.vscode']
+        base_patterns = ['.git', '__pycache__', '*.pyc', '.DS_Store', '.idea', '.vscode']
+        global_path = Path('~/.gitignore_global')
+        global_patterns = read_globs(global_path, base_patterns)
+        local_path = Path(root_path) / '.gitignore'
+        local_patterns = read_globs(local_path, base_patterns)
+        ignore_patterns = base_patterns + global_patterns + local_patterns
 
     def should_ignore(path):
         for pattern in ignore_patterns:
