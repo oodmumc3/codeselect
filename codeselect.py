@@ -61,7 +61,7 @@ def build_file_tree(root_path, ignore_patterns=None):
     """Build a tree representing the file structure."""
     if ignore_patterns is None:
         base_patterns = ['.git', '__pycache__', '*.pyc', '.DS_Store', '.idea', '.vscode']
-        global_path = Path('~/.gitignore_global')
+        global_path = Path('~/.gitignore_global').expanduser()
         global_patterns = read_globs(global_path, base_patterns)
         local_path = Path(root_path) / '.gitignore'
         local_patterns = read_globs(local_path, base_patterns)
