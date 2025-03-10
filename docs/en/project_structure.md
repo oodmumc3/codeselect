@@ -8,7 +8,7 @@ codeselect/
 │── utils.py      # Utility functions
 │── filetree.py   # File tree structure management
 │── selector.py   # Interactive file selection UI
-│── output.py     # Output format management (WIP)
+│── output.py     # Output format management
 │── dependency.py # Dependency analysis (WIP)
 │── cli.py        # Command line interface (WIP)
 │── install.sh    # Installation script
@@ -47,17 +47,19 @@ codeselect/
    - Provides functions for selecting, navigating, and manipulating the file tree.
    - Handles user keyboard input and screen display.
 
-### Modules In Progress
+4. **output.py**
+   - Handles different output formats (txt, md, llm).
+   - Includes functions for writing file tree structure and content.
+   - Provides specialized formatting for different output purposes.
+   - Contains `write_file_tree_to_string()`, `write_output_file()`, `write_markdown_output()`, and `write_llm_optimized_output()` functions.
 
-4. **output.py** (Upcoming)
-   - Will handle different output formats (txt, md, llm).
-   - Will include functions for writing file tree structure and content.
-   - Will support formatting for different output destinations.
+### Completed Modules (Continued)
 
-5. **dependency.py** (Upcoming)
-   - Will analyze relationships between project files.
-   - Will detect imports and references across files.
-   - Will provide insights about file dependencies.
+5. **dependency.py**
+   - Analyzes relationships between project files.
+   - Detects imports and references across multiple programming languages.
+   - Provides insights about internal and external dependencies.
+   - Contains `analyze_dependencies()` function to map references between project files.
 
 6. **cli.py** (Upcoming)
    - Will handle command line argument parsing.

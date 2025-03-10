@@ -9,20 +9,34 @@ echo "Installing CodeSelect..."
 USER_BIN="$HOME/.local/bin"
 mkdir -p "$USER_BIN"
 
-# Create CodeSelect file
-CODESELECT_PATH="$USER_BIN/codeselect"
+# Create CodeSelect directory
+CODESELECT_DIR="$HOME/.local/lib/codeselect"
+mkdir -p "$CODESELECT_DIR"
 
-# Download or create the file
-echo "Downloading CodeSelect..."
-curl -fsSL https://raw.githubusercontent.com/maynetee/codeselect/main/codeselect.py -o "$CODESELECT_PATH" 2>/dev/null || {
-  # If curl fails (e.g., GitHub URL not yet available), copy from the local file
-  if [ -f "codeselect.py" ]; then
-    cp "codeselect.py" "$CODESELECT_PATH"
-  else
-    echo "Error: Cannot download or find codeselect.py"
-    exit 1
-  fi
-}
+# 필요한 모듈 파일 다운로드 또는 복사
+echo "Installing CodeSelect modules..."
+MODULES=("codeselect.py" "cli.py" "utils.py" "filetree.py" "selector.py" "output.py" "dependency.py")
+
+for MODULE in "${MODULES[@]}"; do
+  echo "Installing $MODULE..."
+  curl -fsSL "https://raw.githubusercontent.com/maynetee/codeselect/main/$MODULE" -o "$CODESELECT_DIR/$MODULE" 2>/dev/null || {
+    # curl이 실패하면 로컬 파일에서 복사
+    if [ -f "$MODULE" ]; then
+      cp "$MODULE" "$CODESELECT_DIR/$MODULE"
+    else
+      echo "Error: Cannot download or find $MODULE"
+      exit 1
+    fi
+  }
+done
+
+# Create executable wrapper script
+CODESELECT_PATH="$USER_BIN/codeselect"
+cat > "$CODESELECT_PATH" << 'EOF'
+#!/bin/bash
+SCRIPT_DIR="$HOME/.local/lib/codeselect"
+python3 "$SCRIPT_DIR/codeselect.py" "$@"
+EOF
 
 # Make the script executable
 chmod +x "$CODESELECT_PATH"
@@ -58,6 +72,7 @@ Usage:
   codeselect --help          # Show help
 
 CodeSelect is now installed at: $CODESELECT_PATH
+All modules installed at: $CODESELECT_DIR
 "
 
 # Try to add tab completion for bash
