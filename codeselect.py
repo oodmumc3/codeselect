@@ -20,6 +20,8 @@ import platform
 from pathlib import Path
 import datetime
 import shlex
+import select
+import time
 
 __version__ = "1.0.0"
 
@@ -812,8 +814,8 @@ def find_clipboard_commands():
         
     return available_commands
 
-def try_copy_to_clipboard(text):
-    """Attempt to copy text to clipboard with graceful fallback."""
+def try_copy_to_clipboard(text, timeout=5):
+    """Attempt to copy text to clipboard with graceful fallback and timeout."""
     verbose_debug = False  # Set to True for verbose debugging
     
     def debug_print(msg):
@@ -840,11 +842,11 @@ def try_copy_to_clipboard(text):
                     
                 # Handle WSL specific cases
                 if cmd_args[0] == 'clip.exe' and not ('microsoft' in platform.release().lower() or 
-                                                     os.path.exists('/proc/sys/fs/binfmt_misc/WSLInterop')):
+                                                    os.path.exists('/proc/sys/fs/binfmt_misc/WSLInterop')):
                     debug_print("Skipping clip.exe on non-WSL system")
                     continue
                 
-                # Create a safe process with proper argument handling
+                # Create a process with a pipe for stdin
                 process = subprocess.Popen(
                     cmd_args,
                     stdin=subprocess.PIPE,
@@ -852,15 +854,20 @@ def try_copy_to_clipboard(text):
                     stderr=subprocess.PIPE
                 )
                 
-                # Send data to process
-                stdout, stderr = process.communicate(text.encode('utf-8'))
+                # Use a timeout to prevent hanging
+                try:
+                    stdout, stderr = process.communicate(text.encode('utf-8'), timeout=timeout)
+                    # Check if successful
+                    if process.returncode == 0:
+                        debug_print(f"Successfully used {cmd_args[0]} to copy to clipboard")
+                        return True
+                    else:
+                        debug_print(f"Failed with {cmd_args[0]}: {stderr.decode('utf-8', errors='replace')}")
+                except subprocess.TimeoutExpired:
+                    debug_print(f"Command {cmd_args[0]} timed out after {timeout} seconds")
+                    process.kill()
+                    continue
                 
-                # Check if successful
-                if process.returncode == 0:
-                    debug_print(f"Successfully used {cmd_args[0]} to copy to clipboard")
-                    return True
-                else:
-                    debug_print(f"Failed with {cmd_args[0]}: {stderr.decode('utf-8', errors='replace')}")
             except Exception as e:
                 debug_print(f"Error with {cmd_args[0]}: {str(e)}")
                 
@@ -869,20 +876,27 @@ def try_copy_to_clipboard(text):
             os.path.exists('/proc/sys/fs/binfmt_misc/WSLInterop')):
             try:
                 debug_print("Trying WSL fallback method")
-                temp_file = tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8')
-                temp_file.write(text)
-                temp_file.close()
+                with tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8') as temp_file:
+                    temp_file.write(text)
+                    temp_path = temp_file.name
                 
                 # Use PowerShell to read file and set clipboard
-                ps_cmd = f'cat {shlex.quote(temp_file.name)} | powershell.exe -command "Set-Clipboard"'
-                subprocess.run(ps_cmd, shell=True, check=True)
-                os.unlink(temp_file.name)
-                debug_print("WSL PowerShell clipboard method successful")
-                return True
+                ps_cmd = f'cat {shlex.quote(temp_path)} | powershell.exe -command "Set-Clipboard"'
+                try:
+                    subprocess.run(ps_cmd, shell=True, check=True, timeout=timeout)
+                    os.unlink(temp_path)
+                    debug_print("WSL PowerShell clipboard method successful")
+                    return True
+                except subprocess.TimeoutExpired:
+                    debug_print(f"WSL PowerShell method timed out after {timeout} seconds")
+                    try:
+                        os.unlink(temp_path)
+                    except:
+                        pass
             except Exception as e:
                 debug_print(f"WSL fallback failed: {str(e)}")
                 try:
-                    os.unlink(temp_file.name)
+                    os.unlink(temp_path)
                 except:
                     pass
 
@@ -1133,24 +1147,43 @@ class FileSelector:
         
         print("\nPreparing content for clipboard...")
         
-        # Generate the formatted content
-        formatted_content, file_contents = generate_formatted_content(
-            root_path, self.root_node, self.output_format
-        )
+        try:
+            # Generate the formatted content
+            formatted_content, file_contents = generate_formatted_content(
+                root_path, self.root_node, self.output_format
+            )
+            
+            # Copy to clipboard with timeout
+            print(f"Copying {len(file_contents)} files to clipboard ({len(formatted_content)} bytes)...")
+            if try_copy_to_clipboard(formatted_content, timeout=10):
+                print("Content copied to clipboard successfully!")
+            else:
+                print("Failed to copy to clipboard, try using file output instead.")
+                
+        except KeyboardInterrupt:
+            print("\nOperation cancelled by user.")
+        except Exception as e:
+            print(f"\nError during clipboard operation: {e}")
         
-        # Copy to clipboard
-        print(f"Copying {len(file_contents)} files to clipboard ({len(formatted_content)} bytes)...")
-        if try_copy_to_clipboard(formatted_content):
-            print("Content copied to clipboard successfully!")
-        else:
-            print("Failed to copy to clipboard")
+        print("\nPress Enter to return to the selection interface (or wait 5 seconds)...")
         
-        print("\nPress any key to return to the selection interface...")
-        input()  # Wait for user input
+        try:
+            # Wait for user input with a timeout
+            if select.select([sys.stdin], [], [], 5)[0]:
+                sys.stdin.readline()
+            
+        except Exception:
+            # If there's any issue, just wait a moment
+            time.sleep(2)
         
         # Reinitialize curses
-        self.stdscr = curses.initscr()
-        self.initialize_curses()
+        try:
+            self.stdscr = curses.initscr()
+            self.initialize_curses()
+        except Exception as e:
+            print(f"Error reinitializing interface: {e}")
+            sys.exit(1)
+            
         return True
 
     def run(self, root_path):
@@ -1473,7 +1506,7 @@ def main():
         
         # Copy to clipboard
         print(f"Copying content to clipboard ({len(formatted_content)} bytes)...")
-        if try_copy_to_clipboard(formatted_content):
+        if try_copy_to_clipboard(formatted_content, timeout=10):
             print("Content copied to clipboard successfully!")
         else:
             print("Failed to copy to clipboard")
@@ -1500,7 +1533,7 @@ def main():
             with open(output_path, 'r', encoding='utf-8') as f:
                 content = f.read()
 
-            if try_copy_to_clipboard(content):
+            if try_copy_to_clipboard(content, timeout=10):
                 print("Content copied to clipboard.")
             else:
                 print("Could not copy to clipboard (missing dependencies).")
