@@ -20,32 +20,19 @@ import platform
 from pathlib import Path
 import datetime
 import shlex
-import select
 import time
 
 __version__ = "1.0.0"
 
+# Cache global pour stocker le contenu formaté
+_content_cache = {
+    'formatted_content': None,
+    'file_contents': None,
+    'is_valid': False
+}
+
 def read_non_comments(path: Path) -> list[str]:
-    """Read non-empty non-comment lines from that path
-
-    Read all lines from this source file
-
-    >>> my_lines = read_non_comments(Path(__file__))
-    >>> 'def read_non_comments(path: Path) -> list[str]:' in my_lines
-    True
-
-    The comment below should be excluded
-
-    >>> '# A comment' in my_lines
-    False
-
-    Empty lines should be excluded
-
-    >>> all(line for line in my_lines)
-    True
-    """
-    # A comment
-    
+    """Read non-empty non-comment lines from that path"""
     if not path.is_file():
         return []
     
@@ -53,19 +40,10 @@ def read_non_comments(path: Path) -> list[str]:
         all_lines = path.read_text(encoding='utf-8').splitlines()
         return [line for line in all_lines if line and not line.startswith('#')]
     except (IOError, UnicodeDecodeError, PermissionError):
-        # Handle various file reading errors gracefully
         return []
 
 def matches_gitignore_pattern(path: str, pattern: str) -> bool:
-    """Check if a path matches a gitignore pattern.
-    
-    Implements basic gitignore pattern matching rules:
-    - Basic glob patterns (*, ?)
-    - Leading / for base directory only
-    - Trailing / for directories only
-    - ** for any directory depth
-    - Negation with ! prefix
-    """
+    """Check if a path matches a gitignore pattern."""
     # Handle negation patterns
     if pattern.startswith('!'):
         return not matches_gitignore_pattern(path, pattern[1:])
@@ -117,16 +95,8 @@ def matches_gitignore_pattern(path: str, pattern: str) -> bool:
     )
 
 def read_gitignore(path: Path, base_patterns: list[str]) -> list[str]:
-    """Read gitignore patterns from a file.
-    
-    Handles gitignore format:
-    - Strips comments
-    - Removes empty lines
-    - Processes glob patterns
-    - Excludes patterns in base_patterns
-    """
+    """Read gitignore patterns from a file."""
     lines = read_non_comments(path)
-    # Filter out patterns that are already in base_patterns
     return [line.rstrip() for line in lines if line and line.rstrip() not in base_patterns]
 
 # Structure to represent a node in the file tree
@@ -292,7 +262,7 @@ def collect_selected_content(node, root_path):
     if not node.is_dir and node.selected:
         file_path = node.path
 
-        # FIX: Ensure we're not duplicating the root path
+        # Ensure we're not duplicating the root path
         if node.parent and node.parent.parent is None:
             # If the node is directly under root, use just the filename
             full_path = os.path.join(root_path, node.name)
@@ -324,7 +294,7 @@ def collect_all_content(node, root_path):
     if not node.is_dir:
         file_path = node.path
 
-        # FIX: Apply the same path fixes as in collect_selected_content
+        # Apply the same path fixes as in collect_selected_content
         if node.parent and node.parent.parent is None:
             full_path = os.path.join(root_path, node.name)
         else:
@@ -348,11 +318,7 @@ def collect_all_content(node, root_path):
     return results
 
 def analyze_dependencies(root_path, file_contents):
-    """Analyze relationships between project files.
-
-    Detects dependencies for multiple programming languages
-    by analyzing imports, includes, references, etc.
-    """
+    """Analyze relationships between project files."""
     dependencies = {}
     imports = {}
 
@@ -746,172 +712,120 @@ def get_language_name(extension):
     }
     return language_map.get(extension, extension.upper())
 
-def find_clipboard_commands():
-    """Find available clipboard commands on the system."""
-    clipboard_commands = {
-        'darwin': [   # macOS
-            ['pbcopy'],
-        ],
-        'win32': [    # Windows
-            ['clip'],
-        ],
-        'linux': [    # Linux - X11
-            ['xclip', '-selection', 'clipboard'],
-            ['xsel', '-ib'],
-            # Wayland
-            ['wl-copy'],
-            ['wl-clipboard'],
-            # Others
-            ['copyq', 'add'],
-            ['putclip'],
-        ]
-    }
+# Cache du meilleur outil de clipboard détecté
+_best_clipboard_tool = None
+
+def find_best_clipboard_tool():
+    """Find the best and fastest clipboard tool for the current platform."""
+    global _best_clipboard_tool
     
-    # Get system
+    # Return cached value if available
+    if _best_clipboard_tool is not None:
+        return _best_clipboard_tool
+    
+    # Commandes par plateforme
+    commands = []
+    
+    # Déterminer le système
     system = platform.system().lower()
+    
+    # macOS
     if system == 'darwin':
-        system_key = 'darwin'
-    elif system == 'windows' or system == 'microsoft':
-        system_key = 'win32'
+        commands = [['pbcopy']]
+    # Windows
+    elif system == 'windows':
+        commands = [['clip']]
+    # WSL
+    elif 'microsoft' in platform.release().lower() or os.path.exists('/proc/sys/fs/binfmt_misc/WSLInterop'):
+        commands = [['clip.exe']]
+    # Linux
     else:
-        system_key = 'linux'  # Default for all Unix-like systems
+        # Wayland
+        if os.environ.get('WAYLAND_DISPLAY'):
+            commands = [['wl-copy'], ['wl-clipboard']]
+        # X11
+        else:
+            commands = [['xclip', '-selection', 'clipboard'], ['xsel', '-ib']]
     
-    available_commands = []
+    # Tester chaque commande avec un petit texte
+    test_text = "test"
     
-    # Try finding the commands
-    for cmd_args in clipboard_commands.get(system_key, []):
-        cmd = cmd_args[0]
+    for cmd in commands:
         try:
-            # Try which command
-            which_process = subprocess.run(
-                ['which', cmd],
-                stdout=subprocess.PIPE, 
-                stderr=subprocess.PIPE,
-                text=True,
-                check=False
+            start = time.time()
+            process = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
             )
-            if which_process.returncode == 0:
-                available_commands.append(cmd_args)
-        except:
-            # Try checking if the file exists in PATH
-            for path_dir in os.environ.get('PATH', '').split(os.pathsep):
-                cmd_path = os.path.join(path_dir, cmd)
-                if os.path.isfile(cmd_path) and os.access(cmd_path, os.X_OK):
-                    available_commands.append(cmd_args)
-                    break
+            stdout, stderr = process.communicate(test_text.encode('utf-8'), timeout=1)
+            
+            # Si la commande fonctionne et est rapide
+            if process.returncode == 0:
+                elapsed = time.time() - start
+                # Cacher la commande qui a fonctionné
+                _best_clipboard_tool = cmd
+                return cmd
+        except (subprocess.TimeoutExpired, FileNotFoundError, PermissionError):
+            continue
     
-    # On macOS, pbcopy is always available
-    if system_key == 'darwin' and not available_commands:
-        available_commands.append(['pbcopy'])
+    # Retourner la première commande par défaut si aucune ne fonctionne
+    if commands:
+        _best_clipboard_tool = commands[0]
+        return commands[0]
     
-    # On Windows, clip is always available
-    if system_key == 'win32' and not available_commands:
-        available_commands.append(['clip'])
-    
-    # Detect WSL specifically
-    if 'microsoft' in platform.release().lower() or os.path.exists('/proc/sys/fs/binfmt_misc/WSLInterop'):
-        available_commands.append(['clip.exe'])
-        
-    return available_commands
+    return None
 
-def try_copy_to_clipboard(text, timeout=5):
-    """Attempt to copy text to clipboard with graceful fallback and timeout."""
-    verbose_debug = False  # Set to True for verbose debugging
+def optimized_copy_to_clipboard(text):
+    """Copy text to clipboard using the most optimized method for the current platform."""
+    clipboard_tool = find_best_clipboard_tool()
     
-    def debug_print(msg):
-        if verbose_debug:
-            print(f"DEBUG: {msg}")
-    
-    try:
-        debug_print(f"System: {platform.system()}")
-        debug_print(f"Platform: {sys.platform}")
-        debug_print(f"Release: {platform.release()}")
-        
-        # Find available clipboard commands
-        clipboard_commands = find_clipboard_commands()
-        debug_print(f"Found clipboard commands: {clipboard_commands}")
-        
-        # Try each command in order
-        for cmd_args in clipboard_commands:
-            debug_print(f"Trying clipboard command: {cmd_args}")
-            try:
-                # Handle Wayland vs X11 environment detection
-                if cmd_args[0] in ['wl-copy', 'wl-clipboard'] and not os.environ.get('WAYLAND_DISPLAY'):
-                    debug_print("Skipping Wayland command on non-Wayland system")
-                    continue
-                    
-                # Handle WSL specific cases
-                if cmd_args[0] == 'clip.exe' and not ('microsoft' in platform.release().lower() or 
-                                                    os.path.exists('/proc/sys/fs/binfmt_misc/WSLInterop')):
-                    debug_print("Skipping clip.exe on non-WSL system")
-                    continue
-                
-                # Create a process with a pipe for stdin
-                process = subprocess.Popen(
-                    cmd_args,
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE
-                )
-                
-                # Use a timeout to prevent hanging
-                try:
-                    stdout, stderr = process.communicate(text.encode('utf-8'), timeout=timeout)
-                    # Check if successful
-                    if process.returncode == 0:
-                        debug_print(f"Successfully used {cmd_args[0]} to copy to clipboard")
-                        return True
-                    else:
-                        debug_print(f"Failed with {cmd_args[0]}: {stderr.decode('utf-8', errors='replace')}")
-                except subprocess.TimeoutExpired:
-                    debug_print(f"Command {cmd_args[0]} timed out after {timeout} seconds")
-                    process.kill()
-                    continue
-                
-            except Exception as e:
-                debug_print(f"Error with {cmd_args[0]}: {str(e)}")
-                
-        # Special case for WSL users without wsl-clipboard installed
-        if ('microsoft' in platform.release().lower() or 
-            os.path.exists('/proc/sys/fs/binfmt_misc/WSLInterop')):
-            try:
-                debug_print("Trying WSL fallback method")
-                with tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8') as temp_file:
-                    temp_file.write(text)
-                    temp_path = temp_file.name
-                
-                # Use PowerShell to read file and set clipboard
-                ps_cmd = f'cat {shlex.quote(temp_path)} | powershell.exe -command "Set-Clipboard"'
-                try:
-                    subprocess.run(ps_cmd, shell=True, check=True, timeout=timeout)
-                    os.unlink(temp_path)
-                    debug_print("WSL PowerShell clipboard method successful")
-                    return True
-                except subprocess.TimeoutExpired:
-                    debug_print(f"WSL PowerShell method timed out after {timeout} seconds")
-                    try:
-                        os.unlink(temp_path)
-                    except:
-                        pass
-            except Exception as e:
-                debug_print(f"WSL fallback failed: {str(e)}")
-                try:
-                    os.unlink(temp_path)
-                except:
-                    pass
-
-        # If all else fails, try to create a file in the home directory
+    if not clipboard_tool:
+        # Fallback en cas d'échec de détection d'outil
         fallback_path = os.path.expanduser("~/codeselect_output.txt")
         with open(fallback_path, 'w', encoding='utf-8') as f:
             f.write(text)
         print(f"Clipboard copy failed. Output saved to: {fallback_path}")
         return False
+    
+    try:
+        # Utiliser directement l'outil le plus rapide (sans vérifications supplémentaires)
+        process = subprocess.Popen(
+            clipboard_tool,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        
+        # Utiliser un timeout court pour éviter les blocages
+        stdout, stderr = process.communicate(text.encode('utf-8'), timeout=3)
+        
+        if process.returncode == 0:
+            return True
+            
+    except subprocess.TimeoutExpired:
+        try:
+            process.kill()
+        except:
+            pass
     except Exception as e:
-        print(f"Could not copy to clipboard: {e}")
-        return False
+        pass
+    
+    # Fallback en cas d'échec
+    fallback_path = os.path.expanduser("~/codeselect_output.txt")
+    with open(fallback_path, 'w', encoding='utf-8') as f:
+        f.write(text)
+    print(f"Clipboard copy failed. Output saved to: {fallback_path}")
+    return False
 
 def generate_formatted_content(root_path, root_node, output_format='llm'):
     """Generate formatted content string without writing to a file."""
+    # Check cache first
+    global _content_cache
+    if _content_cache['is_valid']:
+        return _content_cache['formatted_content'], _content_cache['file_contents']
+    
     # Collect content from selected files
     file_contents = collect_selected_content(root_node, root_path)
     
@@ -956,6 +870,11 @@ def generate_formatted_content(root_path, root_node, output_format='llm'):
         with open(temp_path, 'r', encoding='utf-8') as f:
             formatted_content = f.read()
         
+        # Cache the results
+        _content_cache['formatted_content'] = formatted_content
+        _content_cache['file_contents'] = file_contents
+        _content_cache['is_valid'] = True
+        
         return formatted_content, file_contents
     
     finally:
@@ -964,6 +883,25 @@ def generate_formatted_content(root_path, root_node, output_format='llm'):
             os.unlink(temp_path)
         except:
             pass
+
+def handle_clipboard_only(root_path, root_node, output_format='llm'):
+    """Copy to clipboard without creating a file and exit."""
+    print("\nPreparing content for clipboard...")
+    
+    # Generate content
+    formatted_content, file_contents = generate_formatted_content(
+        root_path, root_node, output_format
+    )
+    
+    # Copy to clipboard using optimized method
+    print(f"Copying {len(file_contents)} files to clipboard ({len(formatted_content)} bytes)...")
+    if optimized_copy_to_clipboard(formatted_content):
+        print("Content copied to clipboard successfully!")
+    else:
+        print("Failed to copy to clipboard.")
+    
+    # Exit the program directly
+    sys.exit(0)
 
 class FileSelector:
     def __init__(self, root_node, stdscr, output_format='llm'):
@@ -1033,6 +971,10 @@ class FileSelector:
             # If current node is a file, just toggle its selection
             else:
                 current_node.selected = not current_node.selected
+                
+            # Invalidate content cache when selection changes
+            global _content_cache
+            _content_cache['is_valid'] = False
 
     def draw_tree(self):
         """Draw the file tree."""
@@ -1103,7 +1045,7 @@ class FileSelector:
         clip_status = "ON" if self.copy_to_clipboard else "OFF"
         clipo_status = "ON" if self.clipboard_only else "OFF"
         
-        help_text = f"A: All  N: None  B: Clipboard({clip_status})  O: ClipboardOnly({clipo_status})  D: Done  X: Exit"
+        help_text = f"A: All  N: None  B: Clipboard({clip_status})  O: ClipboardOnly  D: Done  X: Exit"
         
         # Truncate if it's too long for the screen
         if len(help_text) > self.width:
@@ -1122,6 +1064,10 @@ class FileSelector:
                 child.selected = node.selected
                 if child.is_dir:
                     self.toggle_selection(child)
+        
+        # Invalidate content cache when selection changes
+        global _content_cache
+        _content_cache['is_valid'] = False
 
     def toggle_expand(self, node):
         """Expand or collapse a directory."""
@@ -1139,52 +1085,10 @@ class FileSelector:
                     _select_recursive(child)
 
         _select_recursive(self.root_node)
-
-    def copy_only_to_clipboard(self, root_path):
-        """Generate formatted content and copy it to the clipboard without creating a file."""
-        # Exit curses temporarily to avoid screen issues during processing
-        curses.endwin()
         
-        print("\nPreparing content for clipboard...")
-        
-        try:
-            # Generate the formatted content
-            formatted_content, file_contents = generate_formatted_content(
-                root_path, self.root_node, self.output_format
-            )
-            
-            # Copy to clipboard with timeout
-            print(f"Copying {len(file_contents)} files to clipboard ({len(formatted_content)} bytes)...")
-            if try_copy_to_clipboard(formatted_content, timeout=10):
-                print("Content copied to clipboard successfully!")
-            else:
-                print("Failed to copy to clipboard, try using file output instead.")
-                
-        except KeyboardInterrupt:
-            print("\nOperation cancelled by user.")
-        except Exception as e:
-            print(f"\nError during clipboard operation: {e}")
-        
-        print("\nPress Enter to return to the selection interface (or wait 5 seconds)...")
-        
-        try:
-            # Wait for user input with a timeout
-            if select.select([sys.stdin], [], [], 5)[0]:
-                sys.stdin.readline()
-            
-        except Exception:
-            # If there's any issue, just wait a moment
-            time.sleep(2)
-        
-        # Reinitialize curses
-        try:
-            self.stdscr = curses.initscr()
-            self.initialize_curses()
-        except Exception as e:
-            print(f"Error reinitializing interface: {e}")
-            sys.exit(1)
-            
-        return True
+        # Invalidate content cache when selection changes
+        global _content_cache
+        _content_cache['is_valid'] = False
 
     def run(self, root_path):
         """Run the selection interface."""
@@ -1251,24 +1155,17 @@ class FileSelector:
                 self.copy_to_clipboard = not self.copy_to_clipboard
 
             elif key in [ord('o'), ord('O')]:
-                # Toggle clipboard-only mode
-                self.clipboard_only = not self.clipboard_only
-                
-                # If entering clipboard-only mode, immediately execute it
-                if self.clipboard_only and key == ord('o'):  # Capital O doesn't trigger immediate execution
-                    if self.copy_only_to_clipboard(root_path):
-                        # After returning from clipboard-only, toggle it back off
-                        self.clipboard_only = False
+                # Sortir complètement pour le clipboard-only
+                curses.endwin()
+                handle_clipboard_only(root_path, self.root_node, self.output_format)
+                # Cette fonction ne revient jamais, elle quitte le programme
 
             elif key in [ord('x'), ord('X'), 27]:  # 27 = ESC
                 # Exit without saving
                 return False, None, False
 
             elif key in [ord('d'), ord('D'), 10, 13]:  # 10, 13 = Enter
-                # If in clipboard-only mode, just copy to clipboard
-                if self.clipboard_only:
-                    return self.copy_only_to_clipboard(root_path), None, True
-                # Otherwise, proceed with the normal file creation
+                # Proceed with file creation and clipboard if enabled
                 return True, self.copy_to_clipboard, False
 
             elif key == curses.KEY_RESIZE:
@@ -1459,9 +1356,13 @@ def main():
     print(f"Scanning directory: {root_path}")
     root_node = build_file_tree(root_path)
 
+    # Check if clipboard-only was requested from command line
+    if args.clipboard_only:
+        handle_clipboard_only(root_path, root_node, args.format)
+        # Cette fonction ne revient jamais, elle quitte le programme
+    
     copy_to_clipboard = not args.no_clipboard
     proceed = True
-    clipboard_only = args.clipboard_only
     
     if not args.skip_selection:
         # Launch interactive selection interface
@@ -1469,12 +1370,10 @@ def main():
             result = interactive_selection(root_node, root_path, args.format)
             
             # Unpack result tuple
-            if isinstance(result, tuple) and len(result) >= 3:
-                proceed, copy_setting, clip_only = result
+            if isinstance(result, tuple) and len(result) >= 2:
+                proceed, copy_setting = result[:2]
                 if proceed and copy_setting is not None:
                     copy_to_clipboard = copy_setting
-                if clip_only:
-                    clipboard_only = True
             else:
                 proceed = result
                 
@@ -1495,50 +1394,20 @@ def main():
         print("No files selected. Exiting.")
         return 0
 
-    # Collect content from selected files
-    file_contents = collect_selected_content(root_node, root_path)
-    print(f"Collected content from {len(file_contents)} files.")
-
-    # Check if we only need to copy to clipboard
-    if clipboard_only:
-        print("Clipboard-only mode: preparing content...")
-        formatted_content, _ = generate_formatted_content(root_path, root_node, args.format)
+    # Get the cached content or generate it
+    formatted_content, file_contents = generate_formatted_content(root_path, root_node, args.format)
         
-        # Copy to clipboard
-        print(f"Copying content to clipboard ({len(formatted_content)} bytes)...")
-        if try_copy_to_clipboard(formatted_content, timeout=10):
-            print("Content copied to clipboard successfully!")
-        else:
-            print("Failed to copy to clipboard")
-        return 0
-        
-    # Continue with normal file output if not clipboard-only
-    # Analyze dependencies if using LLM format
-    if args.format == 'llm':
-        print("Analyzing file relationships...")
-        all_files = collect_all_content(root_node, root_path)
-        dependencies = analyze_dependencies(root_path, all_files)
-
-        # Write output with dependencies
-        output_path = write_output_file(args.output, root_path, root_node, file_contents, args.format, dependencies)
-    else:
-        # Write output without dependencies
-        output_path = write_output_file(args.output, root_path, root_node, file_contents, args.format)
-
+    # Write output file
+    output_path = write_output_file(args.output, root_path, root_node, file_contents, args.format)
     print(f"\nOutput written to: {output_path}")
 
-    # Copy to clipboard if enabled
+    # Copy to clipboard if enabled - using the optimized direct method
     if copy_to_clipboard:
-        try:
-            with open(output_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-
-            if try_copy_to_clipboard(content, timeout=10):
-                print("Content copied to clipboard.")
-            else:
-                print("Could not copy to clipboard (missing dependencies).")
-        except Exception as e:
-            print(f"Error copying to clipboard: {e}")
+        print("Copying to clipboard...")
+        if optimized_copy_to_clipboard(formatted_content):
+            print("Content copied to clipboard successfully!")
+        else:
+            print("Failed to copy to clipboard.")
 
     return 0
 
