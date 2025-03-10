@@ -21,6 +21,47 @@ import datetime
 
 __version__ = "1.0.0"
 
+
+def read_non_comments(path: Path) -> list[str]:
+    """Read non-empty non-comment lines from that path
+
+    Read all lines from this source file
+    >>> my_lines = read_non_comments(Path(__file__))
+
+    This function's def should be one of the lines
+    >>> assert 'def read_non_comments(path: Path) -> list[str]:' in my_lines
+
+    The comment below should be excluded
+    >>> assert '# A comment' not in my_lines
+
+    Empty lines should be excluded
+    >>> assert all([_ for _ in my_lines])
+    """
+# A comment
+    if not path.is_file():
+        return []
+    all_lines = path.read_text().splitlines()
+    return [_ for _ in all_lines if _ and not _.startswith('#')]
+
+
+def read_globs(path: Path, base_patterns: list[str]) -> list[str]:
+    """Strip any '/' used for dirs in the lines at that path
+
+    Ignore the base patterns
+
+    >>> base_patterns = []
+    >>> assert '    Ignore the base patterns' in read_globs(Path(__file__), base_patterns)
+    >>> base_patterns = ['    Ignore the base patterns']
+    >>> assert '    Ignore the base patterns' not in read_globs(Path(__file__), base_patterns)
+
+    This line ends with /
+        and the '/' should be removed
+    >>> assert '    This line ends with ' in read_globs(Path(__file__), [])
+    """
+    lines = read_non_comments(path)
+    return [_.rstrip('/') for _ in lines if _ not in base_patterns]
+
+
 # Structure to represent a node in the file tree
 class Node:
     def __init__(self, name, is_dir, parent=None):
@@ -41,10 +82,16 @@ class Node:
             return parent_path + self.name
         return parent_path + os.sep + self.name
 
+
 def build_file_tree(root_path, ignore_patterns=None):
     """Build a tree representing the file structure."""
     if ignore_patterns is None:
-        ignore_patterns = ['.git', '__pycache__', '*.pyc', '.DS_Store', '.idea', '.vscode']
+        base_patterns = ['.git', '__pycache__', '*.pyc', '.DS_Store', '.idea', '.vscode']
+        global_path = Path('~/.gitignore_global').expanduser()
+        global_patterns = read_globs(global_path, base_patterns)
+        local_path = Path(root_path) / '.gitignore'
+        local_patterns = read_globs(local_path, base_patterns)
+        ignore_patterns = base_patterns + global_patterns + local_patterns
 
     def should_ignore(path):
         for pattern in ignore_patterns:
