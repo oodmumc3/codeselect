@@ -1,375 +1,282 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
 """
 filetree.py - 파일 트리 구조 관리 모듈
 
-이 모듈은 프로젝트 디렉토리의 파일 구조를 트리 형태로 구성하고 관리하는 기능을 제공합니다.
+파일 트리 구조를 생성하고 관리하는 기능을 제공하는 모듈입니다.
 """
 
 import os
-import re
-from typing import Dict, List, Set, Tuple, Optional, Any, Callable
-
-# utils.py에서 필요한 함수를 임포트 (예상)
-from utils import should_ignore_path, get_language_name
+import sys
+import fnmatch
+from utils import should_ignore_path
 
 class Node:
     """
     파일 트리의 노드를 표현하는 클래스
     
-    각 노드는 파일 또는 디렉토리를 나타내며, 디렉토리인 경우 자식 노드들을 가질 수 있습니다.
+    파일 또는 디렉토리를 나타내며, 디렉토리인 경우 자식 노드를 가질 수 있습니다.
     """
-    def __init__(self, name: str, path: str, is_dir: bool = False):
+    def __init__(self, name, is_dir, parent=None):
         """
-        Node 객체 초기화
+        Node 클래스 초기화
         
         Args:
-            name: 파일 또는 디렉토리 이름
-            path: 파일 또는 디렉토리의 절대 경로
-            is_dir: 디렉토리 여부 (True면 디렉토리, False면 파일)
+            name (str): 노드의 이름 (파일/디렉토리 이름)
+            is_dir (bool): 디렉토리 여부
+            parent (Node, optional): 부모 노드
         """
-        self.name = name  # 파일 또는 디렉토리 이름
-        self.path = path  # 파일 또는 디렉토리의 절대 경로
-        self.is_dir = is_dir  # 디렉토리 여부
-        self.children = []  # 자식 노드 목록 (디렉토리인 경우)
-        self.parent = None  # 부모 노드
-        self.selected = False  # 선택 여부
-        self.expanded = False  # 확장 여부 (UI 표시용)
+        self.name = name
+        self.is_dir = is_dir
+        self.children = {} if is_dir else None
+        self.parent = parent
+        self.selected = True  # 기본적으로 선택됨
+        self.expanded = True  # 폴더는 기본적으로 확장됨
+
+    @property
+    def path(self):
+        """
+        노드의 전체 경로를 반환합니다.
         
-    def add_child(self, child: 'Node') -> None:
+        Returns:
+            str: 노드의 전체 경로
         """
-        자식 노드 추가
+        if self.parent is None:
+            return self.name
+        parent_path = self.parent.path
+        if parent_path.endswith(os.sep):
+            return parent_path + self.name
+        return parent_path + os.sep + self.name
+
+def build_file_tree(root_path, ignore_patterns=None):
+    """
+    파일 구조를 나타내는 트리를 구축합니다.
+    
+    Args:
+        root_path (str): 루트 디렉토리 경로
+        ignore_patterns (list, optional): 무시할 패턴 목록
+        
+    Returns:
+        Node: 파일 트리의 루트 노드
+    """
+    if ignore_patterns is None:
+        ignore_patterns = ['.git', '__pycache__', '*.pyc', '.DS_Store', '.idea', '.vscode']
+
+    def should_ignore(path):
+        """
+        주어진 경로가 무시해야 할 패턴과 일치하는지 확인합니다.
         
         Args:
-            child: 추가할 자식 노드
-        """
-        self.children.append(child)
-        child.parent = self
-        
-    def get_children(self) -> List['Node']:
-        """
-        자식 노드 목록 반환
-        
-        Returns:
-            자식 노드 목록
-        """
-        return self.children
-    
-    def __str__(self) -> str:
-        """
-        노드를 문자열로 표현
-        
-        Returns:
-            노드의 문자열 표현
-        """
-        return f"{'[D] ' if self.is_dir else '[F] '}{self.name} {'(선택됨)' if self.selected else ''}"
-
-
-def build_file_tree(directory: str) -> Node:
-    """
-    주어진 디렉토리의 파일 구조를 트리 형태로 구성
-    
-    Args:
-        directory: 스캔할 디렉토리 경로
-    
-    Returns:
-        루트 노드
-    
-    예시:
-        root = build_file_tree('/path/to/project')
-    """
-    # 디렉토리 경로 정규화
-    directory = os.path.abspath(directory)
-    
-    # 루트 노드 생성
-    root_name = os.path.basename(directory)
-    if not root_name:  # 루트 디렉토리인 경우
-        root_name = directory
-    root = Node(root_name, directory, is_dir=True)
-    root.expanded = True  # 루트는 기본적으로 확장
-    
-    # .gitignore 패턴 로드 (있는 경우)
-    gitignore_patterns = []
-    gitignore_path = os.path.join(directory, '.gitignore')
-    if os.path.exists(gitignore_path):
-        try:
-            with open(gitignore_path, 'r') as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith('#'):
-                        gitignore_patterns.append(line)
-        except Exception:
-            pass  # .gitignore 파일을 읽을 수 없는 경우 무시
-    
-    # 재귀적으로 디렉토리 탐색
-    _build_tree_recursive(root, directory, gitignore_patterns)
-    
-    return root
-
-
-def _should_ignore(path: str, gitignore_patterns: List[str]) -> bool:
-    """
-    파일 또는 디렉토리가 무시되어야 하는지 확인
-    
-    Args:
-        path: 파일 또는 디렉토리 경로
-        gitignore_patterns: .gitignore 패턴 목록
-    
-    Returns:
-        무시해야 하면 True, 아니면 False
-    """
-    # 기본적으로 무시할 파일/디렉토리 패턴
-    default_ignore = [
-        '.*',           # 숨김 파일/디렉토리 (.으로 시작하는 항목)
-        '*~',           # 백업 파일
-        '__pycache__',  # Python 캐시 디렉토리
-        '*.pyc',        # Python 컴파일된 파일
-        '*.pyo',        # Python 최적화된 파일
-        '*.pyd',        # Python 확장 모듈
-        'node_modules', # Node.js 모듈 디렉토리
-        'venv',         # Python 가상 환경
-        'env',          # Python 가상 환경
-        '.venv',        # Python 가상 환경
-        '.env',         # 환경 변수 파일
-        'build',        # 빌드 디렉토리
-        'dist',         # 배포 디렉토리
-        '.DS_Store'     # macOS 디렉토리 정보 파일
-    ]
-    
-    # .gitignore 패턴에 기본 무시 패턴 추가
-    patterns = default_ignore + gitignore_patterns
-    
-    # 파일/디렉토리 이름
-    name = os.path.basename(path)
-    
-    # 패턴 매칭
-    for pattern in patterns:
-        # 패턴이 /로 시작하면 루트 디렉토리부터 매칭
-        if pattern.startswith('/'):
-            if path.endswith(pattern[1:]):
-                return True
-        # 디렉토리만 매칭 (/로 끝나는 경우)
-        elif pattern.endswith('/'):
-            if os.path.isdir(path) and name == pattern[:-1]:
-                return True
-        # 간단한 와일드카드 매칭
-        elif '*' in pattern:
-            if pattern.startswith('*'):
-                if name.endswith(pattern[1:]):
-                    return True
-            elif pattern.endswith('*'):
-                if name.startswith(pattern[:-1]):
-                    return True
-            elif pattern == '*.*':
-                if '.' in name:
-                    return True
-        # 정확한 이름 매칭
-        elif name == pattern:
-            return True
-    
-    return False
-
-
-def _build_tree_recursive(parent_node: Node, directory: str, gitignore_patterns: List[str]) -> None:
-    """
-    재귀적으로 디렉토리를 탐색하여 트리 구성
-    
-    Args:
-        parent_node: 부모 노드
-        directory: 현재 탐색 중인 디렉토리 경로
-        gitignore_patterns: .gitignore 패턴 목록
-    """
-    # 디렉토리 내 항목들을 이름순으로 정렬
-    entries = []
-    try:
-        with os.scandir(directory) as it:
-            for entry in it:
-                # 무시해야 할 파일/디렉토리는 건너뛰기
-                if _should_ignore(entry.path, gitignore_patterns):
-                    continue
-                entries.append(entry)
-        entries.sort(key=lambda e: e.name.lower())  # 대소문자 구분 없이 정렬
-    except PermissionError:
-        return  # 권한 없음
-    
-    # 먼저 디렉토리 처리
-    for entry in entries:
-        if entry.is_dir():            
-            # 디렉토리 노드 생성 및 추가
-            node = Node(entry.name, entry.path, is_dir=True)
-            parent_node.add_child(node)
+            path (str): 확인할 경로
             
-            # 재귀적으로 하위 디렉토리 처리
-            _build_tree_recursive(node, entry.path, gitignore_patterns)
-    
-    # 그 다음 파일 처리
-    for entry in entries:
-        if entry.is_file():            
-            # 파일 노드 생성 및 추가
-            node = Node(entry.name, entry.path, is_dir=False)
-            parent_node.add_child(node)
-
-
-def flatten_tree(root: Node) -> List[Node]:
-    """
-    트리를 평탄화하여 노드 목록으로 변환 (UI 표시용)
-    
-    Args:
-        root: 루트 노드
-    
-    Returns:
-        표시 가능한 노드 목록
-    """
-    flat_list = []
-    
-    def _flatten_recursive(node: Node, depth: int = 0) -> None:
+        Returns:
+            bool: 무시해야 하면 True, 그렇지 않으면 False
         """
-        재귀적으로 트리를 평탄화
+        return should_ignore_path(os.path.basename(path), ignore_patterns)
+
+    root_name = os.path.basename(root_path.rstrip(os.sep))
+    if not root_name:  # 루트 디렉토리 경우
+        root_name = root_path
+
+    root_node = Node(root_name, True)
+    root_node.full_path = root_path  # 루트 노드에 절대 경로 저장
+
+    def add_path(current_node, path_parts, full_path):
+        """
+        경로의 각 부분을 트리에 추가합니다.
         
         Args:
-            node: 현재 노드
-            depth: 현재 깊이
+            current_node (Node): 현재 노드
+            path_parts (list): 경로 부분 목록
+            full_path (str): 전체 경로
         """
-        # 현재 노드 추가
-        node.depth = depth  # UI 표시용 깊이 정보 추가
-        flat_list.append(node)
-        
-        # 디렉토리이고 확장된 경우에만 자식 노드 추가
-        if node.is_dir and node.expanded:
-            for child in node.children:
-                _flatten_recursive(child, depth + 1)
-    
-    _flatten_recursive(root)
-    return flat_list
+        if not path_parts:
+            return
 
+        part = path_parts[0]
+        remaining = path_parts[1:]
 
-def count_selected_files(root: Node) -> int:
+        if should_ignore(os.path.join(full_path, part)):
+            return
+
+        # 이미 부분이 존재하는지 확인
+        if part in current_node.children:
+            child = current_node.children[part]
+        else:
+            is_dir = os.path.isdir(os.path.join(full_path, part))
+            child = Node(part, is_dir, current_node)
+            current_node.children[part] = child
+
+        # 남은 부분이 있으면 재귀적으로 계속
+        if remaining:
+            next_path = os.path.join(full_path, part)
+            add_path(child, remaining, next_path)
+
+    # 디렉토리 구조 순회
+    for dirpath, dirnames, filenames in os.walk(root_path):
+        # 필터링된 디렉토리 건너뛰기
+        dirnames[:] = [d for d in dirnames if not should_ignore(os.path.join(dirpath, d))]
+
+        rel_path = os.path.relpath(dirpath, root_path)
+        if rel_path == '.':
+            # 루트에 있는 파일 추가
+            for filename in filenames:
+                if filename not in root_node.children and not should_ignore(filename):
+                    file_node = Node(filename, False, root_node)
+                    root_node.children[filename] = file_node
+        else:
+            # 디렉토리 추가
+            path_parts = rel_path.split(os.sep)
+            add_path(root_node, path_parts, root_path)
+
+            # 이 디렉토리에 있는 파일 추가
+            current = root_node
+            for part in path_parts:
+                if part in current.children:
+                    current = current.children[part]
+                else:
+                    # 디렉토리가 필터링된 경우 건너뛰기
+                    break
+            else:
+                for filename in filenames:
+                    if not should_ignore(filename) and filename not in current.children:
+                        file_node = Node(filename, False, current)
+                        current.children[filename] = file_node
+
+    return root_node
+
+def flatten_tree(node, visible_only=True):
     """
-    선택된 파일 수 계산
+    트리를 네비게이션을 위한 노드 목록으로 평탄화합니다.
     
     Args:
-        root: 루트 노드
-    
+        node (Node): 루트 노드
+        visible_only (bool, optional): 보이는 노드만 포함할지 여부
+        
     Returns:
-        선택된 파일 수
+        list: (노드, 레벨) 튜플의 목록
+    """
+    flat_nodes = []
+
+    def _traverse(node, level=0):
+        """
+        트리를 순회하며 평탄화된 노드 목록을 생성합니다.
+        
+        Args:
+            node (Node): 현재 노드
+            level (int, optional): 현재 레벨
+        """
+        # 루트 노드는 건너뛰되, 루트의 자식부터는 level 0으로 시작
+        if node.parent is not None:  # 루트 노드 건너뛰기
+            flat_nodes.append((node, level))
+
+        if node.is_dir and node.children and (not visible_only or node.expanded):
+            # 먼저 디렉토리, 그 다음 파일, 알파벳 순으로 정렬
+            items = sorted(node.children.items(),
+                          key=lambda x: (not x[1].is_dir, x[0].lower()))
+
+            for _, child in items:
+                # 루트의 직계 자식들은 level 0, 그 아래부터는 level+1
+                next_level = 0 if node.parent is None else level + 1
+                _traverse(child, next_level)
+
+    _traverse(node)
+    return flat_nodes
+
+def count_selected_files(node):
+    """
+    선택된 파일 수를 계산합니다 (디렉토리 제외).
+    
+    Args:
+        node (Node): 루트 노드
+        
+    Returns:
+        int: 선택된 파일 수
     """
     count = 0
-    
-    def _count_recursive(node: Node) -> None:
-        """
-        재귀적으로 선택된 파일 수 계산
-        
-        Args:
-            node: 현재 노드
-        """
-        nonlocal count
-        if node.selected and not node.is_dir:
-            count += 1
-        
-        for child in node.children:
-            _count_recursive(child)
-    
-    _count_recursive(root)
+    if not node.is_dir and node.selected:
+        count = 1
+    elif node.is_dir and node.children:
+        for child in node.children.values():
+            count += count_selected_files(child)
     return count
 
-
-def collect_selected_content(root: Node) -> Dict[str, Dict[str, Any]]:
+def collect_selected_content(node, root_path):
     """
-    선택된 파일들의 내용 수집
+    선택된 파일들의 내용을 수집합니다.
     
     Args:
-        root: 루트 노드
-    
+        node (Node): 루트 노드
+        root_path (str): 루트 디렉토리 경로
+        
     Returns:
-        선택된 파일들의 내용을 담은 딕셔너리
-        {파일경로: {'content': 파일내용, 'language': 언어이름}}
+        list: (파일 경로, 내용) 튜플의 목록
     """
-    selected_files = {}
-    
-    def _collect_recursive(node: Node) -> None:
-        """
-        재귀적으로 선택된 파일 내용 수집
-        
-        Args:
-            node: 현재 노드
-        """
-        # 디렉토리가 선택된 경우 모든 하위 파일도 선택
-        if node.is_dir and node.selected:
-            for child in node.children:
-                if not child.selected:  # 이미 선택된 경우 중복 방지
-                    child.selected = True
-                    _collect_recursive(child)
-        
-        # 파일이 선택된 경우 내용 수집
-        if not node.is_dir and node.selected:
-            try:
-                with open(node.path, 'r', encoding='utf-8', errors='ignore') as f:
-                    content = f.read()
-                
-                # 언어 식별
-                ext = os.path.splitext(node.name)[1].lstrip('.')
-                
-                # 특수 케이스 처리: .txt 파일은 'text'로 매핑
-                if ext.lower() == 'txt':
-                    language = 'text'
-                else:
-                    language = get_language_name(ext).lower()  # 소문자로 변환
-                
-                selected_files[node.path] = {
-                    'content': content,
-                    'language': language
-                }
-            except Exception as e:
-                # 파일을 읽을 수 없는 경우 오류 메시지 추가
-                selected_files[node.path] = {
-                    'content': f"// 파일을 읽을 수 없음: {str(e)}",
-                    'language': 'text'
-                }
-        
-        # 자식 노드 처리
-        for child in node.children:
-            _collect_recursive(child)
-    
-    _collect_recursive(root)
-    return selected_files
+    results = []
 
+    if not node.is_dir and node.selected:
+        file_path = node.path
 
-def collect_all_content(root: Node) -> Dict[str, Dict[str, Any]]:
+        # 수정: 루트 경로가 중복되지 않도록 보장
+        if node.parent and node.parent.parent is None:
+            # 노드가 루트 바로 아래에 있으면 파일 이름만 사용
+            full_path = os.path.join(root_path, node.name)
+        else:
+            # 중첩된 파일의 경우 적절한 상대 경로 구성
+            rel_path = file_path
+            if file_path.startswith(os.path.basename(root_path) + os.sep):
+                rel_path = file_path[len(os.path.basename(root_path) + os.sep):]
+            full_path = os.path.join(root_path, rel_path)
+
+        try:
+            with open(full_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            results.append((file_path, content))
+        except UnicodeDecodeError:
+            print(f"이진 파일 무시: {file_path}")
+        except Exception as e:
+            print(f"{full_path} 읽기 오류: {e}")
+    elif node.is_dir and node.children:
+        for child in node.children.values():
+            results.extend(collect_selected_content(child, root_path))
+
+    return results
+
+def collect_all_content(node, root_path):
     """
-    모든 파일의 내용 수집 (skip-selection 옵션용)
+    모든 파일의 내용을 수집합니다 (분석용).
     
     Args:
-        root: 루트 노드
-    
+        node (Node): 루트 노드
+        root_path (str): 루트 디렉토리 경로
+        
     Returns:
-        모든 파일의 내용을 담은 딕셔너리
-        {파일경로: {'content': 파일내용, 'language': 언어이름}}
+        list: (파일 경로, 내용) 튜플의 목록
     """
-    # 모든 노드 선택 상태로 변경
-    def _select_all_recursive(node: Node) -> None:
-        node.selected = True
-        for child in node.children:
-            _select_all_recursive(child)
-    
-    _select_all_recursive(root)
-    
-    # 선택된 파일 내용 수집 (모든 파일이 선택됨)
-    return collect_selected_content(root)
+    results = []
 
+    if not node.is_dir:
+        file_path = node.path
 
-if __name__ == "__main__":
-    # 모듈 테스트용 코드 (직접 실행할 경우)
-    print("파일 트리 모듈 테스트")
-    
-    # 현재 디렉토리의 파일 트리 생성
-    test_dir = os.path.dirname(os.path.abspath(__file__))
-    root = build_file_tree(test_dir)
-    
-    # 평탄화된 트리 출력
-    flat_nodes = flatten_tree(root)
-    for node in flat_nodes:
-        indent = "  " * node.depth
-        print(f"{indent}{node}")
-    
-    print(f"총 파일 수: {len([n for n in flat_nodes if not n.is_dir])}")
+        # 수정: collect_selected_content와 동일한 경로 수정 적용
+        if node.parent and node.parent.parent is None:
+            full_path = os.path.join(root_path, node.name)
+        else:
+            rel_path = file_path
+            if file_path.startswith(os.path.basename(root_path) + os.sep):
+                rel_path = file_path[len(os.path.basename(root_path) + os.sep):]
+            full_path = os.path.join(root_path, rel_path)
+
+        try:
+            with open(full_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            results.append((file_path, content))
+        except UnicodeDecodeError:
+            pass  # 이진 파일 조용히 무시
+        except Exception:
+            pass  # 오류 조용히 무시
+    elif node.is_dir and node.children:
+        for child in node.children.values():
+            results.extend(collect_all_content(child, root_path))
+
+    return results

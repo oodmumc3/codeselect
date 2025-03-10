@@ -1,213 +1,218 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
 """
 test_filetree.py - filetree.py 모듈 테스트
+
+filetree.py 모듈의 클래스와 함수들을 테스트하는 코드입니다.
 """
 
 import os
 import sys
-import unittest
 import tempfile
-import shutil
-from typing import List
-
-# 테스트 대상 모듈 임포트
+import unittest
+from pathlib import Path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from filetree import Node, build_file_tree, flatten_tree, count_selected_files, collect_selected_content
+
+from filetree import Node, build_file_tree, flatten_tree, count_selected_files, collect_selected_content, collect_all_content
+
+class TestNode(unittest.TestCase):
+    """Node 클래스를 테스트하는 클래스"""
+    
+    def test_node_initialization(self):
+        """Node 클래스 초기화가 올바르게 되는지 테스트합니다."""
+        # 파일 노드 테스트
+        file_node = Node("test.py", False)
+        self.assertEqual(file_node.name, "test.py")
+        self.assertFalse(file_node.is_dir)
+        self.assertIsNone(file_node.children)
+        self.assertIsNone(file_node.parent)
+        self.assertTrue(file_node.selected)
+        
+        # 디렉토리 노드 테스트
+        dir_node = Node("test_dir", True)
+        self.assertEqual(dir_node.name, "test_dir")
+        self.assertTrue(dir_node.is_dir)
+        self.assertEqual(dir_node.children, {})
+        self.assertIsNone(dir_node.parent)
+        self.assertTrue(dir_node.selected)
+        self.assertTrue(dir_node.expanded)
+    
+    def test_node_path(self):
+        """Node의 path 프로퍼티가 올바른 경로를 반환하는지 테스트합니다."""
+        # 루트 노드
+        root = Node("root", True)
+        self.assertEqual(root.path, "root")
+        
+        # 자식 노드
+        child = Node("child", True, root)
+        self.assertEqual(child.path, "root" + os.sep + "child")
+        
+        # 손자 노드
+        grandchild = Node("grandchild.py", False, child)
+        self.assertEqual(grandchild.path, "root" + os.sep + "child" + os.sep + "grandchild.py")
 
 class TestFileTree(unittest.TestCase):
-    """filetree.py 모듈 테스트 클래스"""
+    """파일 트리 관련 함수들을 테스트하는 클래스"""
     
     def setUp(self):
-        """각 테스트 전에 실행되는 설정"""
-        # 임시 디렉토리 생성
-        self.temp_dir = tempfile.mkdtemp()
+        """테스트 전에 임시 디렉토리와 파일 구조를 생성합니다."""
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.test_dir = self.temp_dir.name
         
-        # 테스트용 파일 구조 생성
-        os.mkdir(os.path.join(self.temp_dir, "dir1"))
-        os.mkdir(os.path.join(self.temp_dir, "dir2"))
-        os.mkdir(os.path.join(self.temp_dir, "dir1", "subdir"))
+        # 기본 디렉토리 구조 생성
+        os.makedirs(os.path.join(self.test_dir, "dir1"))
+        os.makedirs(os.path.join(self.test_dir, "dir2", "subdir"))
         
-        # 파일 생성
-        with open(os.path.join(self.temp_dir, "file1.txt"), "w") as f:
-            f.write("File 1 content")
+        # 몇 가지 파일 생성
+        Path(os.path.join(self.test_dir, "file1.txt")).write_text("File 1 content")
+        Path(os.path.join(self.test_dir, "dir1", "file2.py")).write_text("File 2 content")
+        Path(os.path.join(self.test_dir, "dir2", "file3.md")).write_text("File 3 content")
+        Path(os.path.join(self.test_dir, "dir2", "subdir", "file4.js")).write_text("File 4 content")
         
-        with open(os.path.join(self.temp_dir, "file2.py"), "w") as f:
-            f.write("print('File 2 content')")
-        
-        with open(os.path.join(self.temp_dir, "dir1", "file3.js"), "w") as f:
-            f.write("console.log('File 3 content');")
-        
-        with open(os.path.join(self.temp_dir, "dir1", "subdir", "file4.txt"), "w") as f:
-            f.write("File 4 content")
-        
-        # .gitignore 파일 생성
-        with open(os.path.join(self.temp_dir, ".gitignore"), "w") as f:
-            f.write("*.log\n")
-            f.write("temp/\n")
-        
-        # 무시해야 할 파일/디렉토리 생성
-        os.mkdir(os.path.join(self.temp_dir, "temp"))
-        with open(os.path.join(self.temp_dir, "debug.log"), "w") as f:
-            f.write("Debug log content")
+        # 무시할 파일과 디렉토리 생성
+        os.makedirs(os.path.join(self.test_dir, ".git"))
+        os.makedirs(os.path.join(self.test_dir, "__pycache__"))
+        Path(os.path.join(self.test_dir, ".DS_Store")).touch()
+        Path(os.path.join(self.test_dir, "dir1", "temp.pyc")).touch()
     
     def tearDown(self):
-        """각 테스트 후에 실행되는 정리"""
-        # 임시 디렉토리 삭제
-        shutil.rmtree(self.temp_dir)
-    
-    def test_node_class(self):
-        """Node 클래스 테스트"""
-        # 노드 생성
-        parent = Node("parent", "/path/to/parent", is_dir=True)
-        child1 = Node("child1", "/path/to/parent/child1", is_dir=False)
-        child2 = Node("child2", "/path/to/parent/child2", is_dir=True)
-        
-        # 자식 추가
-        parent.add_child(child1)
-        parent.add_child(child2)
-        
-        # 검증
-        self.assertEqual(len(parent.get_children()), 2)
-        self.assertEqual(child1.parent, parent)
-        self.assertEqual(child2.parent, parent)
-        self.assertTrue("[D]" in str(parent))
-        self.assertTrue("[F]" in str(child1))
+        """테스트 후에 임시 디렉토리를 정리합니다."""
+        self.temp_dir.cleanup()
     
     def test_build_file_tree(self):
-        """build_file_tree 함수 테스트"""
-        root = build_file_tree(self.temp_dir)
+        """build_file_tree 함수가 올바른 파일 트리를 생성하는지 테스트합니다."""
+        root_node = build_file_tree(self.test_dir)
         
-        # 루트 노드 검증
-        self.assertEqual(root.name, os.path.basename(self.temp_dir))
-        self.assertTrue(root.is_dir)
-        self.assertTrue(root.expanded)
+        # 루트 노드 확인
+        self.assertEqual(root_node.name, os.path.basename(self.test_dir))
+        self.assertTrue(root_node.is_dir)
         
-        # 자식 노드 확인 (정확한 갯수는 테스트 환경에 따라 다를 수 있음)
-        # 따라서 필수 항목이 포함되어 있는지만 확인
-        child_names = [child.name for child in root.children]
+        # 필터링 확인 - 무시된 파일/디렉토리는 포함되지 않아야 함
+        root_children = list(root_node.children.keys())
+        self.assertIn("dir1", root_children)
+        self.assertIn("dir2", root_children)
+        self.assertIn("file1.txt", root_children)
+        self.assertNotIn(".git", root_children)
+        self.assertNotIn("__pycache__", root_children)
+        self.assertNotIn(".DS_Store", root_children)
         
-        # 필수 파일/디렉토리 존재 확인
-        self.assertIn("dir1", child_names)
-        self.assertIn("dir2", child_names)
-        self.assertIn("file1.txt", child_names)
-        self.assertIn("file2.py", child_names)
+        # 중첩된 구조 확인
+        dir1_node = root_node.children["dir1"]
+        self.assertTrue(dir1_node.is_dir)
+        self.assertIn("file2.py", dir1_node.children)
+        self.assertNotIn("temp.pyc", dir1_node.children)
         
-        # 무시해야 할 파일/디렉토리 확인
-        self.assertNotIn("temp", child_names)
-        self.assertNotIn("debug.log", child_names)
+        dir2_node = root_node.children["dir2"]
+        self.assertTrue(dir2_node.is_dir)
+        self.assertIn("file3.md", dir2_node.children)
+        self.assertIn("subdir", dir2_node.children)
+        
+        subdir_node = dir2_node.children["subdir"]
+        self.assertTrue(subdir_node.is_dir)
+        self.assertIn("file4.js", subdir_node.children)
     
     def test_flatten_tree(self):
-        """flatten_tree 함수 테스트"""
-        root = build_file_tree(self.temp_dir)
+        """flatten_tree 함수가 트리를 올바르게 평탄화하는지 테스트합니다."""
+        root_node = build_file_tree(self.test_dir)
         
-        # 모든 디렉토리 확장
-        def expand_all(node: Node) -> None:
-            if node.is_dir:
-                node.expanded = True
-                for child in node.children:
-                    expand_all(child)
+        # 모든 노드 포함 (visible_only=False)
+        flat_nodes = flatten_tree(root_node, visible_only=False)
         
-        expand_all(root)
+        # 노드 수 확인 (루트 제외)
+        # dir1, dir2, subdir, file1.txt, file2.py, file3.md, file4.js = 7개
+        self.assertEqual(len(flat_nodes), 7)
         
-        # 트리 평탄화
-        flat_nodes = flatten_tree(root)
+        # 레벨 확인
+        level_0_nodes = [node for node, level in flat_nodes if level == 0]
+        level_1_nodes = [node for node, level in flat_nodes if level == 1]
+        level_2_nodes = [node for node, level in flat_nodes if level == 2]
         
-        # 평탄화된 트리에 모든 항목이 포함되어 있는지 확인
-        # 테스트 환경에 따라 다를 수 있으므로 정확한 개수 대신 최소한의 필수 항목 확인
-        node_paths = [node.path for node in flat_nodes]
+        self.assertEqual(len(level_0_nodes), 3)  # dir1, dir2, file1.txt
+        self.assertEqual(len(level_1_nodes), 3)  # file2.py, file3.md, subdir
+        self.assertEqual(len(level_2_nodes), 1)  # file4.js
         
-        # 필수 경로 포함 확인
-        self.assertIn(self.temp_dir, node_paths)  # 루트
-        self.assertIn(os.path.join(self.temp_dir, "dir1"), node_paths)  # dir1
-        self.assertIn(os.path.join(self.temp_dir, "dir2"), node_paths)  # dir2
-        self.assertIn(os.path.join(self.temp_dir, "file1.txt"), node_paths)  # file1.txt
-        self.assertIn(os.path.join(self.temp_dir, "file2.py"), node_paths)  # file2.py
-        self.assertIn(os.path.join(self.temp_dir, "dir1", "file3.js"), node_paths)  # dir1/file3.js
-        self.assertIn(os.path.join(self.temp_dir, "dir1", "subdir"), node_paths)  # dir1/subdir
-        self.assertIn(os.path.join(self.temp_dir, "dir1", "subdir", "file4.txt"), node_paths)  # dir1/subdir/file4.txt
+        # 노드 접힘 테스트
+        root_node.children["dir2"].expanded = False
+        flat_nodes_visible = flatten_tree(root_node, visible_only=True)
+        
+        # dir2 내부 노드들(file3.md, subdir, file4.js)은 보이지 않아야 함
+        self.assertEqual(len(flat_nodes_visible), 4)  # dir1, dir2, file1.txt, file2.py
     
     def test_count_selected_files(self):
-        """count_selected_files 함수 테스트"""
-        root = build_file_tree(self.temp_dir)
+        """count_selected_files 함수가 올바르게 선택된 파일 수를 계산하는지 테스트합니다."""
+        root_node = build_file_tree(self.test_dir)
         
-        # 초기에는 선택된 파일이 없어야 함
-        self.assertEqual(count_selected_files(root), 0)
+        # 기본적으로 모든 파일이 선택됨
+        self.assertEqual(count_selected_files(root_node), 4)  # file1.txt, file2.py, file3.md, file4.js
         
-        # 일부 파일 선택
-        file_nodes = [node for node in flatten_tree(root) if not node.is_dir]
-        for i, node in enumerate(file_nodes):
-            if i % 2 == 0:  # 짝수 인덱스만 선택
-                node.selected = True
+        # 일부 파일 선택 해제
+        root_node.children["file1.txt"].selected = False
+        root_node.children["dir1"].children["file2.py"].selected = False
         
-        # 선택된 파일 수 확인
-        selected_count = sum(1 for node in file_nodes if node.selected)
-        self.assertEqual(count_selected_files(root), selected_count)
+        self.assertEqual(count_selected_files(root_node), 2)  # file3.md, file4.js
+        
+        # 디렉토리 선택 해제 (하위 파일 포함)
+        root_node.children["dir2"].selected = False
+        
+        # 디렉토리 자체는 포함되지 않고, 내부 파일만 계산됨
+        # dir2를 선택 해제했지만 그 안의 파일들의 selected 상태는 변경되지 않음
+        self.assertEqual(count_selected_files(root_node), 2)  # file3.md, file4.js
     
     def test_collect_selected_content(self):
-        """collect_selected_content 함수 테스트"""
-        root = build_file_tree(self.temp_dir)
+        """collect_selected_content 함수가 선택된 파일의 내용을 올바르게 수집하는지 테스트합니다."""
+        root_node = build_file_tree(self.test_dir)
         
-        # 파일 하나 선택
-        file_node = None
-        for node in flatten_tree(root):
-            if not node.is_dir and node.name == "file1.txt":
-                file_node = node
-                break
+        # 일부 파일만 선택
+        root_node.children["dir1"].children["file2.py"].selected = False
         
-        self.assertIsNotNone(file_node, "file1.txt를 찾을 수 없음")
-        file_node.selected = True
+        contents = collect_selected_content(root_node, self.test_dir)
         
-        # 선택된 파일 내용 수집
-        selected_content = collect_selected_content(root)
+        # 선택된 파일 수 확인
+        self.assertEqual(len(contents), 3)  # file1.txt, file3.md, file4.js
         
-        # 하나의 파일만 선택되어 있어야 함
-        self.assertEqual(len(selected_content), 1)
+        # 파일 경로와 내용 확인
+        paths = [path for path, _ in contents]
         
-        # 파일 경로와 내용 검증
-        file_path = os.path.join(self.temp_dir, "file1.txt")
-        self.assertIn(file_path, selected_content)
-        self.assertEqual(selected_content[file_path]['content'], "File 1 content")
-        self.assertEqual(selected_content[file_path]['language'], "text")
+        base_name = os.path.basename(self.test_dir)
+        expected_paths = [
+            "file1.txt",
+            f"{base_name}{os.sep}dir2{os.sep}file3.md",
+            f"{base_name}{os.sep}dir2{os.sep}subdir{os.sep}file4.js"
+        ]
+        
+        # 각 파일이 포함되어 있는지 확인
+        for exp_path in expected_paths:
+            self.assertTrue(any(exp_path in p for p in paths), f"경로 {exp_path}가 결과에 없습니다")
+        
+        # 선택되지 않은 파일이 포함되지 않는지 확인
+        self.assertFalse(any("file2.py" in p for p in paths))
     
-    def test_directory_selection(self):
-        """디렉토리 선택 시 하위 파일들도 선택되는지 테스트"""
-        root = build_file_tree(self.temp_dir)
+    def test_collect_all_content(self):
+        """collect_all_content 함수가 모든 파일의 내용을 올바르게 수집하는지 테스트합니다."""
+        root_node = build_file_tree(self.test_dir)
         
-        # dir1 디렉토리 찾기
-        dir_node = None
-        for node in flatten_tree(root):
-            if node.is_dir and node.name == "dir1":
-                dir_node = node
-                break
+        # 일부 파일 선택 해제 (영향을 주지 않아야 함)
+        root_node.children["dir1"].children["file2.py"].selected = False
         
-        self.assertIsNotNone(dir_node, "dir1 디렉토리를 찾을 수 없음")
+        contents = collect_all_content(root_node, self.test_dir)
         
-        # dir1 디렉토리 선택
-        dir_node.selected = True
+        # 모든 파일이 포함되어야 함
+        self.assertEqual(len(contents), 4)  # file1.txt, file2.py, file3.md, file4.js
         
-        # 파일 내용 수집
-        selected_content = collect_selected_content(root)
+        # 파일 경로와 내용 확인
+        paths = [path for path, _ in contents]
         
-        # dir1 디렉토리 아래의 파일들이 포함되어 있는지 확인
-        dir1_files = [
-            os.path.join(self.temp_dir, "dir1", "file3.js"),
-            os.path.join(self.temp_dir, "dir1", "subdir", "file4.txt")
+        base_name = os.path.basename(self.test_dir)
+        expected_paths = [
+            "file1.txt",
+            f"{base_name}{os.sep}dir1{os.sep}file2.py",
+            f"{base_name}{os.sep}dir2{os.sep}file3.md",
+            f"{base_name}{os.sep}dir2{os.sep}subdir{os.sep}file4.js"
         ]
         
-        for file_path in dir1_files:
-            self.assertIn(file_path, selected_content)
-        
-        # 선택되지 않은 파일들은 포함되지 않아야 함
-        not_expected_files = [
-            os.path.join(self.temp_dir, "file1.txt"),
-            os.path.join(self.temp_dir, "file2.py")
-        ]
-        
-        for file_path in not_expected_files:
-            self.assertNotIn(file_path, selected_content)
+        # 각 파일이 포함되어 있는지 확인
+        for exp_path in expected_paths:
+            self.assertTrue(any(exp_path in p for p in paths), f"경로 {exp_path}가 결과에 없습니다")
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()
