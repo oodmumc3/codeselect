@@ -16,51 +16,116 @@ import curses
 import shutil
 import tempfile
 import subprocess
+import platform
 from pathlib import Path
 import datetime
+import shlex
 
 __version__ = "1.0.0"
-
 
 def read_non_comments(path: Path) -> list[str]:
     """Read non-empty non-comment lines from that path
 
     Read all lines from this source file
-    >>> my_lines = read_non_comments(Path(__file__))
 
-    This function's def should be one of the lines
-    >>> assert 'def read_non_comments(path: Path) -> list[str]:' in my_lines
+    >>> my_lines = read_non_comments(Path(__file__))
+    >>> 'def read_non_comments(path: Path) -> list[str]:' in my_lines
+    True
 
     The comment below should be excluded
-    >>> assert '# A comment' not in my_lines
+
+    >>> '# A comment' in my_lines
+    False
 
     Empty lines should be excluded
-    >>> assert all([_ for _ in my_lines])
+
+    >>> all(line for line in my_lines)
+    True
     """
-# A comment
+    # A comment
+    
     if not path.is_file():
         return []
-    all_lines = path.read_text().splitlines()
-    return [_ for _ in all_lines if _ and not _.startswith('#')]
+    
+    try:
+        all_lines = path.read_text(encoding='utf-8').splitlines()
+        return [line for line in all_lines if line and not line.startswith('#')]
+    except (IOError, UnicodeDecodeError, PermissionError):
+        # Handle various file reading errors gracefully
+        return []
 
+def matches_gitignore_pattern(path: str, pattern: str) -> bool:
+    """Check if a path matches a gitignore pattern.
+    
+    Implements basic gitignore pattern matching rules:
+    - Basic glob patterns (*, ?)
+    - Leading / for base directory only
+    - Trailing / for directories only
+    - ** for any directory depth
+    - Negation with ! prefix
+    """
+    # Handle negation patterns
+    if pattern.startswith('!'):
+        return not matches_gitignore_pattern(path, pattern[1:])
+    
+    # Check if pattern is for directories only
+    dir_only = pattern.endswith('/')
+    if dir_only:
+        pattern = pattern[:-1]
+        if not os.path.isdir(path):
+            return False
+    
+    # Normalize path separators
+    norm_path = path.replace('\\', '/')
+    norm_pattern = pattern.replace('\\', '/')
+    
+    # Handle patterns with leading /
+    if norm_pattern.startswith('/'):
+        norm_pattern = norm_pattern[1:]
+        # Leading / means match from base directory
+        base_path = os.path.basename(norm_path)
+        return fnmatch.fnmatch(base_path, norm_pattern)
+    
+    # Handle ** pattern (matches any directory depth)
+    if '**' in norm_pattern:
+        # Split the pattern at **
+        parts = norm_pattern.split('**')
+        
+        if len(parts) == 2:
+            # Simple case: **/pattern or pattern/**
+            if parts[0] == '':
+                # **/pattern - match any path ending with pattern
+                return norm_path.endswith(parts[1])
+            elif parts[1] == '':
+                # pattern/** - match any path starting with pattern
+                return norm_path.startswith(parts[0])
+            else:
+                # pattern1**/pattern2 - match if contains both patterns in order
+                return parts[0] in norm_path and parts[1] in norm_path and norm_path.index(parts[0]) < norm_path.index(parts[1])
+        else:
+            # More complex case with multiple **
+            regex_pattern = norm_pattern.replace('.', '\\.').replace('**/','.*').replace('**','.*').replace('*','[^/]*').replace('?','[^/]')
+            return re.match(f"^{regex_pattern}$", norm_path) is not None
+    
+    # Standard glob pattern matching
+    return (
+        fnmatch.fnmatch(norm_path, norm_pattern) or 
+        fnmatch.fnmatch(os.path.basename(norm_path), norm_pattern) or
+        any(fnmatch.fnmatch(part, norm_pattern) for part in norm_path.split('/'))
+    )
 
-def read_globs(path: Path, base_patterns: list[str]) -> list[str]:
-    """Strip any '/' used for dirs in the lines at that path
-
-    Ignore the base patterns
-
-    >>> base_patterns = []
-    >>> assert '    Ignore the base patterns' in read_globs(Path(__file__), base_patterns)
-    >>> base_patterns = ['    Ignore the base patterns']
-    >>> assert '    Ignore the base patterns' not in read_globs(Path(__file__), base_patterns)
-
-    This line ends with /
-        and the '/' should be removed
-    >>> assert '    This line ends with ' in read_globs(Path(__file__), [])
+def read_gitignore(path: Path, base_patterns: list[str]) -> list[str]:
+    """Read gitignore patterns from a file.
+    
+    Handles gitignore format:
+    - Strips comments
+    - Removes empty lines
+    - Processes glob patterns
+    - Excludes patterns in base_patterns
     """
     lines = read_non_comments(path)
-    return [_.rstrip('/') for _ in lines if _ not in base_patterns]
-
+    # Filter out patterns that are already in base_patterns
+    return [line.rstrip() for line in lines if line and line.rstrip() not in base_patterns]
 
 # Structure to represent a node in the file tree
 class Node:
@@ -82,20 +147,47 @@ class Node:
             return parent_path + self.name
         return parent_path + os.sep + self.name
 
-
 def build_file_tree(root_path, ignore_patterns=None):
     """Build a tree representing the file structure."""
     if ignore_patterns is None:
+        # Default base patterns to ignore
         base_patterns = ['.git', '__pycache__', '*.pyc', '.DS_Store', '.idea', '.vscode']
-        global_path = Path('~/.gitignore_global').expanduser()
-        global_patterns = read_globs(global_path, base_patterns)
-        local_path = Path(root_path) / '.gitignore'
-        local_patterns = read_globs(local_path, base_patterns)
-        ignore_patterns = base_patterns + global_patterns + local_patterns
+        
+        # Add global gitignore patterns
+        global_ignore_patterns = []
+        global_gitignore_paths = [
+            Path('~/.gitignore_global').expanduser(),  # Standard global gitignore
+            Path('~/.config/git/ignore').expanduser(),  # Git's built-in global ignore
+            Path('~/.gitignore').expanduser(),         # Alternative location
+        ]
+        
+        for global_path in global_gitignore_paths:
+            if global_path.exists():
+                patterns = read_gitignore(global_path, base_patterns)
+                global_ignore_patterns.extend(patterns)
+        
+        # Add local gitignore patterns
+        local_gitignore_path = Path(root_path) / '.gitignore'
+        local_ignore_patterns = read_gitignore(local_gitignore_path, base_patterns)
+        
+        # Also respect project gitignore file
+        project_gitignore_path = Path(root_path) / '.projectignore'
+        project_ignore_patterns = read_gitignore(project_gitignore_path, base_patterns)
+        
+        # Combine all patterns
+        ignore_patterns = base_patterns + global_ignore_patterns + local_ignore_patterns + project_ignore_patterns
 
     def should_ignore(path):
+        """Check if a path should be ignored."""
+        rel_path = os.path.relpath(path, root_path)
+        rel_path = rel_path.replace('\\', '/') # Normalize path separators for pattern matching
+        
+        # Special case for symlinks to avoid infinite recursion
+        if os.path.islink(path):
+            return True
+            
         for pattern in ignore_patterns:
-            if fnmatch.fnmatch(os.path.basename(path), pattern):
+            if matches_gitignore_pattern(rel_path, pattern) or fnmatch.fnmatch(os.path.basename(path), pattern):
                 return True
         return False
 
@@ -130,7 +222,7 @@ def build_file_tree(root_path, ignore_patterns=None):
             add_path(child, remaining, next_path)
 
     # Walk the directory structure
-    for dirpath, dirnames, filenames in os.walk(root_path):
+    for dirpath, dirnames, filenames in os.walk(root_path, topdown=True, followlinks=False):
         # Skip filtered directories
         dirnames[:] = [d for d in dirnames if not should_ignore(os.path.join(dirpath, d))]
 
@@ -138,7 +230,7 @@ def build_file_tree(root_path, ignore_patterns=None):
         if rel_path == '.':
             # Add files in root
             for filename in filenames:
-                if filename not in root_node.children and not should_ignore(filename):
+                if filename not in root_node.children and not should_ignore(os.path.join(dirpath, filename)):
                     file_node = Node(filename, False, root_node)
                     root_node.children[filename] = file_node
         else:
@@ -156,7 +248,7 @@ def build_file_tree(root_path, ignore_patterns=None):
                     break
             else:
                 for filename in filenames:
-                    if not should_ignore(filename) and filename not in current.children:
+                    if not should_ignore(os.path.join(dirpath, filename)) and filename not in current.children:
                         file_node = Node(filename, False, current)
                         current.children[filename] = file_node
 
@@ -268,6 +360,7 @@ def analyze_dependencies(root_path, file_contents):
         '.py': [
             r'^from\s+([\w.]+)\s+import',
             r'^import\s+([\w.]+)',
+            r'import\s+([\w.]+)',  # Less strict pattern
         ],
         # C/C++
         '.c': [r'#include\s+[<"]([^>"]+)[>"]'],
@@ -278,14 +371,29 @@ def analyze_dependencies(root_path, file_contents):
         '.js': [
             r'(?:import|require)\s*\(?[\'"]([@\w\-./]+)[\'"]',
             r'from\s+[\'"]([@\w\-./]+)[\'"]',
+            r'import\s*\{[^}]*\}\s*from\s*[\'"]([^\'")]+)[\'"]',  # Named imports
         ],
         '.ts': [
             r'(?:import|require)\s*\(?[\'"]([@\w\-./]+)[\'"]',
             r'from\s+[\'"]([@\w\-./]+)[\'"]',
+            r'import\s*\{[^}]*\}\s*from\s*[\'"]([^\'")]+)[\'"]',  # Named imports
+            r'import\s+type\s+\{[^}]*\}\s*from\s*[\'"]([^\'")]+)[\'"]',  # Type imports
+        ],
+        '.jsx': [
+            r'(?:import|require)\s*\(?[\'"]([@\w\-./]+)[\'"]',
+            r'from\s+[\'"]([@\w\-./]+)[\'"]',
+            r'import\s*\{[^}]*\}\s*from\s*[\'"]([^\'")]+)[\'"]',  # Named imports
+        ],
+        '.tsx': [
+            r'(?:import|require)\s*\(?[\'"]([@\w\-./]+)[\'"]',
+            r'from\s+[\'"]([@\w\-./]+)[\'"]',
+            r'import\s*\{[^}]*\}\s*from\s*[\'"]([^\'")]+)[\'"]',  # Named imports
+            r'import\s+type\s+\{[^}]*\}\s*from\s*[\'"]([^\'")]+)[\'"]',  # Type imports
         ],
         # Java
         '.java': [
             r'import\s+([\w.]+)',
+            r'import\s+static\s+([\w.]+)',
         ],
         # Go
         '.go': [
@@ -296,20 +404,24 @@ def analyze_dependencies(root_path, file_contents):
         '.rb': [
             r'require\s+[\'"]([^\'"]+)[\'"]',
             r'require_relative\s+[\'"]([^\'"]+)[\'"]',
+            r'load\s+[\'"]([^\'"]+)[\'"]',
         ],
         # PHP
         '.php': [
-            r'(?:require|include)(?:_once)?\s*\(?[\'"]([^\'"]+)[\'"]',
+            r'(?:require|include|require_once|include_once)\s*\(?[\'"]([^\'"]+)[\'"]',
             r'use\s+([\w\\]+)',
+            r'namespace\s+([\w\\]+)',
         ],
         # Rust
         '.rs': [
             r'use\s+([\w:]+)',
             r'extern\s+crate\s+([\w]+)',
+            r'mod\s+(\w+)',
         ],
         # Swift
         '.swift': [
             r'import\s+(\w+)',
+            r'@testable\s+import\s+(\w+)',
         ],
         # Shell scripts
         '.sh': [
@@ -319,6 +431,17 @@ def analyze_dependencies(root_path, file_contents):
         # Makefile
         'Makefile': [
             r'include\s+([^\s]+)',
+        ],
+        # Kotlin
+        '.kt': [
+            r'import\s+([\w.]+)',
+            r'package\s+([\w.]+)',
+        ],
+        # Dart/Flutter
+        '.dart': [
+            r'import\s+[\'"]([^\'"]+)[\'"]',
+            r'part\s+[\'"]([^\'"]+)[\'"]',
+            r'export\s+[\'"]([^\'"]+)[\'"]',
         ],
     }
 
@@ -341,7 +464,12 @@ def analyze_dependencies(root_path, file_contents):
         for pattern in patterns:
             matches = re.findall(pattern, content, re.MULTILINE)
             for match in matches:
-                imports[file_path].add(match)
+                if isinstance(match, tuple):  # Some regex groups return tuples
+                    for m in match:
+                        if m:  # Skip empty matches
+                            imports[file_path].add(m)
+                else:
+                    imports[file_path].add(match)
 
     # Second pass: resolve references between files
     file_mapping = {}  # Create mapping of possible names to file paths
@@ -358,6 +486,14 @@ def analyze_dependencies(root_path, file_contents):
         # For paths with folders, also add relative variants
         if os.path.dirname(file_path):
             rel_path = file_path
+            rel_path_no_ext = os.path.splitext(rel_path)[0]
+            file_mapping[rel_path_no_ext] = file_path
+            
+            # Handle directory paths for package imports
+            dir_path = os.path.dirname(file_path)
+            file_mapping[dir_path] = file_path
+            
+            # Handle path variations
             while '/' in rel_path:
                 rel_path = rel_path[rel_path.find('/')+1:]
                 file_mapping[rel_path] = file_path
@@ -379,7 +515,38 @@ def analyze_dependencies(root_path, file_contents):
                 imp + '.h',  # For C
                 imp + '.hpp',  # For C++
                 imp + '.js',  # For JS
+                imp + '.jsx',  # For React
+                imp + '.ts',  # For TypeScript
+                imp + '.tsx',  # For React+TypeScript
+                imp + '.java',  # For Java
+                imp + '.kt',  # For Kotlin
+                imp + '.dart',  # For Dart
+                imp + '.go',  # For Go
+                imp + '.rb',  # For Ruby
+                imp + '.php',  # For PHP
+                imp + '.rs',  # For Rust
+                imp + '.swift',  # For Swift
+                imp + '.sh',  # For Shell
+                './'+imp,  # Relative imports
+                '../'+imp,  # Parent imports
             ]
+            
+            # Add package-style variations (for JS/TS/Python)
+            package_parts = imp.split('.')
+            if len(package_parts) > 1:
+                # Add partial matches for submodules
+                for i in range(1, len(package_parts)):
+                    import_variations.append('/'.join(package_parts[:i]))
+                    
+                # Try directory with index/init files
+                package_path = imp.replace('.', '/')
+                import_variations.extend([
+                    f"{package_path}/index.js",
+                    f"{package_path}/index.ts",
+                    f"{package_path}/index.jsx",
+                    f"{package_path}/index.tsx",
+                    f"{package_path}/__init__.py"
+                ])
 
             for var in import_variations:
                 if var in file_mapping:
@@ -548,16 +715,22 @@ def get_language_name(extension):
         'h': 'C/C++ Header',
         'hpp': 'C++ Header',
         'js': 'JavaScript',
+        'jsx': 'React',
         'ts': 'TypeScript',
+        'tsx': 'React TypeScript',
         'java': 'Java',
         'html': 'HTML',
         'css': 'CSS',
+        'scss': 'SCSS',
+        'sass': 'Sass',
+        'less': 'Less',
         'php': 'PHP',
         'rb': 'Ruby',
         'go': 'Go',
         'rs': 'Rust',
         'swift': 'Swift',
         'kt': 'Kotlin',
+        'dart': 'Dart',
         'sh': 'Shell',
         'md': 'Markdown',
         'json': 'JSON',
@@ -566,35 +739,152 @@ def get_language_name(extension):
         'yml': 'YAML',
         'sql': 'SQL',
         'r': 'R',
+        'vue': 'Vue',
+        'svelte': 'Svelte',
     }
     return language_map.get(extension, extension.upper())
 
+def find_clipboard_commands():
+    """Find available clipboard commands on the system."""
+    clipboard_commands = {
+        'darwin': [   # macOS
+            ['pbcopy'],
+        ],
+        'win32': [    # Windows
+            ['clip'],
+        ],
+        'linux': [    # Linux - X11
+            ['xclip', '-selection', 'clipboard'],
+            ['xsel', '-ib'],
+            # Wayland
+            ['wl-copy'],
+            ['wl-clipboard'],
+            # Others
+            ['copyq', 'add'],
+            ['putclip'],
+        ]
+    }
+    
+    # Get system
+    system = platform.system().lower()
+    if system == 'darwin':
+        system_key = 'darwin'
+    elif system == 'windows' or system == 'microsoft':
+        system_key = 'win32'
+    else:
+        system_key = 'linux'  # Default for all Unix-like systems
+    
+    available_commands = []
+    
+    # Try finding the commands
+    for cmd_args in clipboard_commands.get(system_key, []):
+        cmd = cmd_args[0]
+        try:
+            # Try which command
+            which_process = subprocess.run(
+                ['which', cmd],
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False
+            )
+            if which_process.returncode == 0:
+                available_commands.append(cmd_args)
+        except:
+            # Try checking if the file exists in PATH
+            for path_dir in os.environ.get('PATH', '').split(os.pathsep):
+                cmd_path = os.path.join(path_dir, cmd)
+                if os.path.isfile(cmd_path) and os.access(cmd_path, os.X_OK):
+                    available_commands.append(cmd_args)
+                    break
+    
+    # On macOS, pbcopy is always available
+    if system_key == 'darwin' and not available_commands:
+        available_commands.append(['pbcopy'])
+    
+    # On Windows, clip is always available
+    if system_key == 'win32' and not available_commands:
+        available_commands.append(['clip'])
+    
+    # Detect WSL specifically
+    if 'microsoft' in platform.release().lower() or os.path.exists('/proc/sys/fs/binfmt_misc/WSLInterop'):
+        available_commands.append(['clip.exe'])
+        
+    return available_commands
+
 def try_copy_to_clipboard(text):
     """Attempt to copy text to clipboard with graceful fallback."""
+    verbose_debug = False  # Set to True for verbose debugging
+    
+    def debug_print(msg):
+        if verbose_debug:
+            print(f"DEBUG: {msg}")
+    
     try:
-        # Try platform-specific methods
-        if sys.platform == 'darwin':  # macOS
+        debug_print(f"System: {platform.system()}")
+        debug_print(f"Platform: {sys.platform}")
+        debug_print(f"Release: {platform.release()}")
+        
+        # Find available clipboard commands
+        clipboard_commands = find_clipboard_commands()
+        debug_print(f"Found clipboard commands: {clipboard_commands}")
+        
+        # Try each command in order
+        for cmd_args in clipboard_commands:
+            debug_print(f"Trying clipboard command: {cmd_args}")
             try:
-                process = subprocess.Popen(['pbcopy'], stdin=subprocess.PIPE)
-                process.communicate(text.encode('utf-8'))
-                return True
-            except:
-                pass
-        elif sys.platform == 'win32':  # Windows
-            try:
-                process = subprocess.Popen(['clip'], stdin=subprocess.PIPE)
-                process.communicate(text.encode('utf-8'))
-                return True
-            except:
-                pass
-        elif sys.platform.startswith('linux'):  # Linux
-            for cmd in ['xclip -selection clipboard', 'xsel -ib']:
-                try:
-                    process = subprocess.Popen(cmd.split(), stdin=subprocess.PIPE)
-                    process.communicate(text.encode('utf-8'))
-                    return True
-                except:
+                # Handle Wayland vs X11 environment detection
+                if cmd_args[0] in ['wl-copy', 'wl-clipboard'] and not os.environ.get('WAYLAND_DISPLAY'):
+                    debug_print("Skipping Wayland command on non-Wayland system")
                     continue
+                    
+                # Handle WSL specific cases
+                if cmd_args[0] == 'clip.exe' and not ('microsoft' in platform.release().lower() or 
+                                                     os.path.exists('/proc/sys/fs/binfmt_misc/WSLInterop')):
+                    debug_print("Skipping clip.exe on non-WSL system")
+                    continue
+                
+                # Create a safe process with proper argument handling
+                process = subprocess.Popen(
+                    cmd_args,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE
+                )
+                
+                # Send data to process
+                stdout, stderr = process.communicate(text.encode('utf-8'))
+                
+                # Check if successful
+                if process.returncode == 0:
+                    debug_print(f"Successfully used {cmd_args[0]} to copy to clipboard")
+                    return True
+                else:
+                    debug_print(f"Failed with {cmd_args[0]}: {stderr.decode('utf-8', errors='replace')}")
+            except Exception as e:
+                debug_print(f"Error with {cmd_args[0]}: {str(e)}")
+                
+        # Special case for WSL users without wsl-clipboard installed
+        if ('microsoft' in platform.release().lower() or 
+            os.path.exists('/proc/sys/fs/binfmt_misc/WSLInterop')):
+            try:
+                debug_print("Trying WSL fallback method")
+                temp_file = tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8')
+                temp_file.write(text)
+                temp_file.close()
+                
+                # Use PowerShell to read file and set clipboard
+                ps_cmd = f'cat {shlex.quote(temp_file.name)} | powershell.exe -command "Set-Clipboard"'
+                subprocess.run(ps_cmd, shell=True, check=True)
+                os.unlink(temp_file.name)
+                debug_print("WSL PowerShell clipboard method successful")
+                return True
+            except Exception as e:
+                debug_print(f"WSL fallback failed: {str(e)}")
+                try:
+                    os.unlink(temp_file.name)
+                except:
+                    pass
 
         # If all else fails, try to create a file in the home directory
         fallback_path = os.path.expanduser("~/codeselect_output.txt")
@@ -602,12 +892,67 @@ def try_copy_to_clipboard(text):
             f.write(text)
         print(f"Clipboard copy failed. Output saved to: {fallback_path}")
         return False
-    except:
-        print("Could not copy to clipboard or save to file.")
+    except Exception as e:
+        print(f"Could not copy to clipboard: {e}")
         return False
 
+def generate_formatted_content(root_path, root_node, output_format='llm'):
+    """Generate formatted content string without writing to a file."""
+    # Collect content from selected files
+    file_contents = collect_selected_content(root_node, root_path)
+    
+    # Create a temporary file to hold the formatted content
+    with tempfile.NamedTemporaryFile(mode='w+', encoding='utf-8', delete=False) as temp_file:
+        temp_path = temp_file.name
+    
+    try:
+        # For LLM format, analyze dependencies
+        if output_format == 'llm':
+            all_files = collect_all_content(root_node, root_path)
+            dependencies = analyze_dependencies(root_path, all_files)
+            write_llm_optimized_output(temp_path, root_path, root_node, file_contents, dependencies)
+        elif output_format == 'md':
+            write_markdown_output(temp_path, root_path, root_node, file_contents)
+        else:
+            # Default txt format
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                # Write file tree
+                f.write("<file_map>\n")
+                f.write(f"{root_path}\n")
+                tree_str = write_file_tree_to_string(root_node)
+                f.write(tree_str)
+                f.write("</file_map>\n\n")
+                
+                # Write file contents
+                f.write("<file_contents>\n")
+                for path, content in file_contents:
+                    f.write(f"File: {path}\n")
+                    f.write("```")
+                    ext = os.path.splitext(path)[1][1:].lower()
+                    if ext:
+                        f.write(ext)
+                    f.write("\n")
+                    f.write(content)
+                    if not content.endswith('\n'):
+                        f.write('\n')
+                    f.write("```\n\n")
+                f.write("</file_contents>\n")
+        
+        # Read the formatted content
+        with open(temp_path, 'r', encoding='utf-8') as f:
+            formatted_content = f.read()
+        
+        return formatted_content, file_contents
+    
+    finally:
+        # Clean up the temporary file
+        try:
+            os.unlink(temp_path)
+        except:
+            pass
+
 class FileSelector:
-    def __init__(self, root_node, stdscr):
+    def __init__(self, root_node, stdscr, output_format='llm'):
         self.root_node = root_node
         self.stdscr = stdscr
         self.current_index = 0
@@ -616,6 +961,8 @@ class FileSelector:
         self.max_visible = 0
         self.height, self.width = 0, 0
         self.copy_to_clipboard = True  # Default: copy to clipboard enabled
+        self.output_format = output_format  # Store the output format
+        self.clipboard_only = False  # Default: create file and copy to clipboard
         self.initialize_curses()
 
     def initialize_curses(self):
@@ -737,8 +1084,18 @@ class FileSelector:
         help_y += 1
         self.stdscr.addstr(help_y, 0, "T: Toggle dir only  E: Expand all  C: Collapse all", curses.color_pair(6))
         help_y += 1
+        
+        # Status indicators
         clip_status = "ON" if self.copy_to_clipboard else "OFF"
-        self.stdscr.addstr(help_y, 0, f"A: Select All  N: Select None  B: Clipboard ({clip_status})  X: Exit  D: Done", curses.color_pair(6))
+        clipo_status = "ON" if self.clipboard_only else "OFF"
+        
+        help_text = f"A: All  N: None  B: Clipboard({clip_status})  O: ClipboardOnly({clipo_status})  D: Done  X: Exit"
+        
+        # Truncate if it's too long for the screen
+        if len(help_text) > self.width:
+            help_text = help_text[:self.width-3] + "..."
+            
+        self.stdscr.addstr(help_y, 0, help_text, curses.color_pair(6))
 
         self.stdscr.refresh()
 
@@ -769,7 +1126,34 @@ class FileSelector:
 
         _select_recursive(self.root_node)
 
-    def run(self):
+    def copy_only_to_clipboard(self, root_path):
+        """Generate formatted content and copy it to the clipboard without creating a file."""
+        # Exit curses temporarily to avoid screen issues during processing
+        curses.endwin()
+        
+        print("\nPreparing content for clipboard...")
+        
+        # Generate the formatted content
+        formatted_content, file_contents = generate_formatted_content(
+            root_path, self.root_node, self.output_format
+        )
+        
+        # Copy to clipboard
+        print(f"Copying {len(file_contents)} files to clipboard ({len(formatted_content)} bytes)...")
+        if try_copy_to_clipboard(formatted_content):
+            print("Content copied to clipboard successfully!")
+        else:
+            print("Failed to copy to clipboard")
+        
+        print("\nPress any key to return to the selection interface...")
+        input()  # Wait for user input
+        
+        # Reinitialize curses
+        self.stdscr = curses.initscr()
+        self.initialize_curses()
+        return True
+
+    def run(self, root_path):
         """Run the selection interface."""
         while True:
             self.draw_tree()
@@ -829,27 +1213,44 @@ class FileSelector:
                 # Toggle selection of current directory only
                 self.toggle_current_dir_selection()
 
-            elif key in [ord('b'), ord('B')]:  # Changed from 'c' to 'b' for clipboard
-                # Toggle clipboard
+            elif key in [ord('b'), ord('B')]:
+                # Toggle clipboard setting
                 self.copy_to_clipboard = not self.copy_to_clipboard
+
+            elif key in [ord('o'), ord('O')]:
+                # Toggle clipboard-only mode
+                self.clipboard_only = not self.clipboard_only
+                
+                # If entering clipboard-only mode, immediately execute it
+                if self.clipboard_only and key == ord('o'):  # Capital O doesn't trigger immediate execution
+                    if self.copy_only_to_clipboard(root_path):
+                        # After returning from clipboard-only, toggle it back off
+                        self.clipboard_only = False
 
             elif key in [ord('x'), ord('X'), 27]:  # 27 = ESC
                 # Exit without saving
-                return False
+                return False, None, False
 
             elif key in [ord('d'), ord('D'), 10, 13]:  # 10, 13 = Enter
-                # Done
-                return True
+                # If in clipboard-only mode, just copy to clipboard
+                if self.clipboard_only:
+                    return self.copy_only_to_clipboard(root_path), None, True
+                # Otherwise, proceed with the normal file creation
+                return True, self.copy_to_clipboard, False
 
             elif key == curses.KEY_RESIZE:
                 # Handle window resize
                 self.update_dimensions()
 
-        return True
+        return True, self.copy_to_clipboard, False
 
-def interactive_selection(root_node):
+def interactive_selection(root_node, root_path, output_format='llm'):
     """Launch the interactive file selection interface."""
-    return curses.wrapper(lambda stdscr: FileSelector(root_node, stdscr).run())
+    def _run_interface(stdscr):
+        selector = FileSelector(root_node, stdscr, output_format)
+        return selector.run(root_path)
+    
+    return curses.wrapper(_run_interface)
 
 def write_file_tree_to_string(node, prefix='', is_last=True):
     """Write the file tree as a string."""
@@ -995,6 +1396,11 @@ def main():
         help="Disable automatic copy to clipboard"
     )
     parser.add_argument(
+        "--clipboard-only",
+        action="store_true",
+        help="Copy to clipboard only (don't create a file)"
+    )
+    parser.add_argument(
         "--version",
         action="store_true",
         help="Show version information"
@@ -1014,20 +1420,35 @@ def main():
         return 1
 
     # Generate output filename if not specified
-    if not args.output:
+    if not args.output and not args.clipboard_only:
         args.output = generate_output_filename(root_path, args.format)
 
     print(f"Scanning directory: {root_path}")
     root_node = build_file_tree(root_path)
 
+    copy_to_clipboard = not args.no_clipboard
     proceed = True
+    clipboard_only = args.clipboard_only
+    
     if not args.skip_selection:
         # Launch interactive selection interface
         try:
-            proceed = interactive_selection(root_node)
+            result = interactive_selection(root_node, root_path, args.format)
+            
+            # Unpack result tuple
+            if isinstance(result, tuple) and len(result) >= 3:
+                proceed, copy_setting, clip_only = result
+                if proceed and copy_setting is not None:
+                    copy_to_clipboard = copy_setting
+                if clip_only:
+                    clipboard_only = True
+            else:
+                proceed = result
+                
             if not proceed:
                 print("Selection cancelled. Exiting without saving.")
                 return 0
+                
         except Exception as e:
             print(f"Error in selection interface: {e}")
             return 1
@@ -1045,6 +1466,20 @@ def main():
     file_contents = collect_selected_content(root_node, root_path)
     print(f"Collected content from {len(file_contents)} files.")
 
+    # Check if we only need to copy to clipboard
+    if clipboard_only:
+        print("Clipboard-only mode: preparing content...")
+        formatted_content, _ = generate_formatted_content(root_path, root_node, args.format)
+        
+        # Copy to clipboard
+        print(f"Copying content to clipboard ({len(formatted_content)} bytes)...")
+        if try_copy_to_clipboard(formatted_content):
+            print("Content copied to clipboard successfully!")
+        else:
+            print("Failed to copy to clipboard")
+        return 0
+        
+    # Continue with normal file output if not clipboard-only
     # Analyze dependencies if using LLM format
     if args.format == 'llm':
         print("Analyzing file relationships...")
@@ -1060,7 +1495,7 @@ def main():
     print(f"\nOutput written to: {output_path}")
 
     # Copy to clipboard if enabled
-    if not args.no_clipboard:
+    if copy_to_clipboard:
         try:
             with open(output_path, 'r', encoding='utf-8') as f:
                 content = f.read()
