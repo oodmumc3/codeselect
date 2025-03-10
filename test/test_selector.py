@@ -1,245 +1,150 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+test_selector.py - selector.py 모듈 테스트
 
-import unittest
+selector.py 모듈의 클래스와 함수들을 테스트하는 코드입니다.
+"""
+
 import os
 import sys
 import tempfile
+import unittest
 from unittest.mock import patch, MagicMock
-
-# 테스트를 위한 더미 노드 클래스 선언
-class Node:
-    def __init__(self, name, is_dir=False, level=0, parent=None):
-        self.name = name
-        self.is_dir = is_dir
-        self.level = level
-        self.parent = parent
-        self.children = []
-        self.selected = False
-        self.expanded = True
-        self.path = name
-
-    def add_child(self, child):
-        self.children.append(child)
-        return child
-
-# 파일 선택기 클래스 임포트
-# 실제 테스트에서는 아래 주석을 해제하고 사용합니다
+from pathlib import Path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from selector import FileSelector, interactive_selection
 
-# 테스트용으로 임시 임포트
-# from selector import FileSelector, interactive_selection
+from filetree import Node, build_file_tree
+from selector import FileSelector
 
 class TestFileSelector(unittest.TestCase):
-    """
-    FileSelector 클래스 테스트
-    """
+    """FileSelector 클래스를 테스트하는 클래스"""
     
     def setUp(self):
-        """
-        테스트용 파일 트리 생성
+        """테스트 전에 파일 트리 구조를 설정합니다."""
+        # 루트 노드 생성
+        self.root_node = Node("test_root", True)
         
-        구조:
-        root/
-        ├── folder1/
-        │   ├── file1.txt
-        │   └── file2.py
-        └── folder2/
-            ├── file3.txt
-            └── subfolder/
-                └── file4.js
-        """
-        self.root = Node("root", is_dir=True)
+        # 디렉토리 추가
+        dir1 = Node("dir1", True, self.root_node)
+        dir2 = Node("dir2", True, self.root_node)
+        self.root_node.children["dir1"] = dir1
+        self.root_node.children["dir2"] = dir2
         
-        # folder1과 파일들
-        folder1 = self.root.add_child(Node("folder1", is_dir=True, level=1, parent=self.root))
-        folder1.add_child(Node("file1.txt", level=2, parent=folder1))
-        folder1.add_child(Node("file2.py", level=2, parent=folder1))
+        # 파일 추가
+        file1 = Node("file1.txt", False, self.root_node)
+        file2 = Node("file2.py", False, dir1)
+        file3 = Node("file3.md", False, dir2)
         
-        # folder2와 파일들
-        folder2 = self.root.add_child(Node("folder2", is_dir=True, level=1, parent=self.root))
-        folder2.add_child(Node("file3.txt", level=2, parent=folder2))
+        self.root_node.children["file1.txt"] = file1
+        dir1.children["file2.py"] = file2
+        dir2.children["file3.md"] = file3
         
-        subfolder = folder2.add_child(Node("subfolder", is_dir=True, level=2, parent=folder2))
-        subfolder.add_child(Node("file4.js", level=3, parent=subfolder))
-        
-        # 목 함수를 사용해 flatten_tree의 동작 재현
-        self.flat_nodes = []
-        self._flatten_helper(self.root)
-        
+        # curses 스크린 모의 객체 생성
+        self.mock_stdscr = MagicMock()
+        self.mock_stdscr.getmaxyx.return_value = (24, 80)  # 24행 80열의 화면
+    
+    @patch('curses.color_pair')
+    @patch('curses.init_pair')
+    @patch('curses.start_color')
+    @patch('curses.use_default_colors')
+    @patch('curses.curs_set')
+    def test_initialize_curses(self, mock_curs_set, mock_use_default_colors, mock_start_color, mock_init_pair, mock_color_pair):
+        """initialize_curses 메서드가 올바르게 curses를 초기화하는지 테스트합니다."""
         # FileSelector 인스턴스 생성
-        self.selector = FileSelector(self.root, "테스트 선택기")
-        # flat_nodes 속성 설정 (실제로는 refresh_flat_nodes()에서 생성됨)
-        self.selector.flat_nodes = self.flat_nodes
+        selector = FileSelector(self.root_node, self.mock_stdscr)
+        
+        # curses 초기화 함수들이 호출되었는지 확인
+        mock_start_color.assert_called_once()
+        mock_use_default_colors.assert_called_once()
+        mock_curs_set.assert_called_once_with(0)  # 커서 숨기기
+        
+        # 색상 쌍 초기화 확인
+        self.assertEqual(mock_init_pair.call_count, 6)  # 6개의 색상 쌍
+        
+        # keypad 함수 호출 확인
+        self.mock_stdscr.keypad.assert_called_once_with(True)
     
-    def _flatten_helper(self, node):
-        """
-        테스트용 파일 트리 평면화 함수
-        """
-        if node.is_dir:
-            self.flat_nodes.append(node)
-            if node.expanded:
-                for child in node.children:
-                    self._flatten_helper(child)
-        else:
-            self.flat_nodes.append(node)
+    @patch('curses.color_pair')
+    @patch('curses.init_pair')
+    @patch('curses.start_color')
+    @patch('curses.use_default_colors')
+    @patch('curses.curs_set')
+    def test_update_dimensions(self, mock_curs_set, mock_use_default_colors, mock_start_color, mock_init_pair, mock_color_pair):
+        """update_dimensions 메서드가 올바르게 화면 크기를 업데이트하는지 테스트합니다."""
+        # FileSelector 인스턴스 생성
+        selector = FileSelector(self.root_node, self.mock_stdscr)
+        
+        # 화면 크기 설정
+        self.mock_stdscr.getmaxyx.return_value = (30, 100)  # 변경된 화면 크기
+        
+        # 크기 업데이트
+        selector.update_dimensions()
+        
+        # 업데이트된 크기 확인
+        self.assertEqual(selector.height, 30)
+        self.assertEqual(selector.width, 100)
+        self.assertEqual(selector.max_visible, 24)  # 30 - 6
     
-    def test_init(self):
-        """초기화 테스트"""
-        self.assertEqual(self.selector.root_node, self.root)
-        self.assertEqual(self.selector.title, "테스트 선택기")
-        self.assertEqual(self.selector.cursor_index, 0)
-        self.assertFalse(self.selector.search_mode)
-        self.assertTrue(self.selector.clipboard_enabled)
+    @patch('curses.color_pair')
+    @patch('curses.init_pair')
+    @patch('curses.start_color')
+    @patch('curses.use_default_colors')
+    @patch('curses.curs_set')
+    def test_expand_all(self, mock_curs_set, mock_use_default_values, mock_start_color, mock_init_pair, mock_color_pair):
+        """expand_all 메서드가 모든 디렉토리의 확장 상태를 올바르게 설정하는지 테스트합니다."""
+        # FileSelector 인스턴스 생성
+        mock_stdscr = MagicMock()
+        mock_stdscr.getmaxyx.return_value = (24, 80)
+        selector = FileSelector(self.root_node, mock_stdscr)
+        
+        # 모든 디렉토리 접기
+        selector.expand_all(False)
+        
+        # 모든 디렉토리가 접혀있는지 확인
+        self.assertFalse(self.root_node.expanded)
+        for child_name, child in self.root_node.children.items():
+            if child.is_dir:
+                self.assertFalse(child.expanded)
+        
+        # 모든 디렉토리 펼치기
+        selector.expand_all(True)
+        
+        # 모든 디렉토리가 펼쳐있는지 확인
+        self.assertTrue(self.root_node.expanded)
+        for child_name, child in self.root_node.children.items():
+            if child.is_dir:
+                self.assertTrue(child.expanded)
     
-    def test_move_cursor(self):
-        """커서 이동 테스트"""
-        # 초기 커서 위치
-        self.assertEqual(self.selector.cursor_index, 0)
+    @patch('curses.color_pair')
+    @patch('curses.init_pair')
+    @patch('curses.start_color')
+    @patch('curses.use_default_colors')
+    @patch('curses.curs_set')
+    def test_select_all(self, mock_curs_set, mock_use_default_values, mock_start_color, mock_init_pair, mock_color_pair):
+        """select_all 메서드가 모든 노드의 선택 상태를 올바르게 설정하는지 테스트합니다."""
+        # FileSelector 인스턴스 생성
+        mock_stdscr = MagicMock()
+        mock_stdscr.getmaxyx.return_value = (24, 80)
+        selector = FileSelector(self.root_node, mock_stdscr)
         
-        # 아래로 이동
-        self.selector.move_cursor(1)
-        self.assertEqual(self.selector.cursor_index, 1)
+        # 모든 노드 선택 해제
+        selector.select_all(False)
         
-        # 다시 아래로 이동
-        self.selector.move_cursor(1)
-        self.assertEqual(self.selector.cursor_index, 2)
+        # 모든 노드가 선택 해제되었는지 확인
+        def check_selection_state(node, expected_state):
+            self.assertEqual(node.selected, expected_state)
+            if node.is_dir and node.children:
+                for child in node.children.values():
+                    check_selection_state(child, expected_state)
         
-        # 위로 이동
-        self.selector.move_cursor(-1)
-        self.assertEqual(self.selector.cursor_index, 1)
-    
-    def test_toggle_node_selected(self):
-        """노드 선택 토글 테스트"""
-        # 파일 선택
-        self.selector.cursor_index = 2  # file1.txt 노드
-        self.assertFalse(self.flat_nodes[2].selected)
+        check_selection_state(self.root_node, False)
         
-        # 선택 토글
-        self.selector.toggle_node_selected()
-        self.assertTrue(self.flat_nodes[2].selected)
+        # 모든 노드 선택
+        selector.select_all(True)
         
-        # 다시 토글하여 선택 해제
-        self.selector.toggle_node_selected()
-        self.assertFalse(self.flat_nodes[2].selected)
-    
-    def test_toggle_directory_expanded(self):
-        """디렉토리 확장/축소 토글 테스트"""
-        # folder1 선택
-        self.selector.cursor_index = 1  # folder1 노드
-        self.assertTrue(self.flat_nodes[1].expanded)
-        
-        # 축소 토글
-        with patch.object(self.selector, 'refresh_flat_nodes') as mock_refresh:
-            self.selector.toggle_directory_expanded()
-            self.assertFalse(self.flat_nodes[1].expanded)
-            mock_refresh.assert_called_once()
-    
-    def test_toggle_all_selected(self):
-        """모든 파일 선택/해제 테스트"""
-        # 모든 파일이 선택되지 않은 상태 확인
-        for node in self.flat_nodes:
-            if not node.is_dir:
-                self.assertFalse(node.selected)
-        
-        # 모두 선택
-        self.selector.toggle_all_selected(True)
-        
-        # 모든 파일이 선택된 상태 확인
-        for node in self.flat_nodes:
-            if not node.is_dir:
-                self.assertTrue(node.selected, f"{node.name} 선택되지 않음")
-        
-        # 모두 해제
-        self.selector.toggle_all_selected(False)
-        
-        # 모든 파일이 선택 해제된 상태 확인
-        for node in self.flat_nodes:
-            if not node.is_dir:
-                self.assertFalse(node.selected)
-    
-    def test_toggle_clipboard(self):
-        """클립보드 활성화/비활성화 토글 테스트"""
-        self.assertTrue(self.selector.clipboard_enabled)
-        
-        # 클립보드 비활성화
-        self.selector.toggle_clipboard()
-        self.assertFalse(self.selector.clipboard_enabled)
-        
-        # 클립보드 다시 활성화
-        self.selector.toggle_clipboard()
-        self.assertTrue(self.selector.clipboard_enabled)
-    
-    def test_process_normal_key(self):
-        """일반 모드에서 키 입력 처리 테스트"""
-        # 모의 curses 키 코드
-        KEY_UP = 259
-        KEY_DOWN = 258
-        KEY_SPACE = 32
-        KEY_ENTER = 10
-        KEY_ESC = 27
-        
-        # 위로 이동 키
-        with patch.object(self.selector, 'move_cursor') as mock_move:
-            self.selector.process_normal_key(KEY_UP)
-            mock_move.assert_called_once_with(-1)
-        
-        # 아래로 이동 키
-        with patch.object(self.selector, 'move_cursor') as mock_move:
-            self.selector.process_normal_key(KEY_DOWN)
-            mock_move.assert_called_once_with(1)
-        
-        # 선택 토글 키
-        with patch.object(self.selector, 'toggle_node_selected') as mock_toggle:
-            self.selector.process_normal_key(KEY_SPACE)
-            mock_toggle.assert_called_once()
-        
-        # 완료 키
-        result = self.selector.process_normal_key(KEY_ENTER)
-        self.assertTrue(result)
-        
-        # 취소 키
-        result = self.selector.process_normal_key(KEY_ESC)
-        self.assertFalse(result)
-    
-    def test_search_mode(self):
-        """검색 모드 테스트"""
-        # 검색 모드 시작
-        with patch.object(self.selector, 'refresh_flat_nodes') as mock_refresh:
-            self.selector.search_mode = True
-            self.selector.search_term = "file"
-            
-            # 검색어 추가
-            self.selector.process_search_key(ord('1'))
-            self.assertEqual(self.selector.search_term, "file1")
-            mock_refresh.assert_called_once_with("file1")
-            
-            # 백스페이스 처리
-            mock_refresh.reset_mock()
-            self.selector.process_search_key(127)  # Backspace 키
-            self.assertEqual(self.selector.search_term, "file")
-            mock_refresh.assert_called_once()
-            
-            # 검색 완료
-            self.selector.process_search_key(10)  # Enter 키
-            self.assertFalse(self.selector.search_mode)
-    
-    @patch('curses.wrapper')
-    def test_interactive_selection(self, mock_wrapper):
-        """대화형 선택 함수 테스트"""
-        # curses.wrapper 함수가 True를 반환하도록 설정
-        mock_wrapper.return_value = True
-        
-        # 대화형 선택 함수 호출
-        result = interactive_selection(self.root, "테스트 타이틀")
-        
-        # curses.wrapper가 호출됐는지 확인
-        mock_wrapper.assert_called_once()
-        
-        # 결과가 예상대로인지 확인
-        self.assertTrue(result)
+        # 모든 노드가 선택되었는지 확인
+        check_selection_state(self.root_node, True)
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()

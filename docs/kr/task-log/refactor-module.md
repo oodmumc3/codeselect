@@ -13,10 +13,14 @@
   - `count_selected_files()`: 선택된 파일 수 계산
   - `collect_selected_content()`: 선택된 파일들의 내용 수집
   - `collect_all_content()`: 모든 파일의 내용 수집 (skip-selection 옵션용)
+- ✅ **selector.py**: 파일 선택 UI (2025-03-10 완료)
+  - `FileSelector` 클래스: curses 기반 대화형 파일 선택 UI
+  - `interactive_selection()`: 선택 인터페이스 실행 함수
 
 ## 테스트 코드
 - ✅ **test/test_utils.py**: utils.py 기능 테스트 (2025-03-10 완료)
 - ✅ **test/test_filetree.py**: filetree.py 기능 테스트 (2025-03-10 완료)
+- ✅ **test/test_selector.py**: selector.py 기능 테스트 (2025-03-10 완료)
 
 ## 남은 작업 및 파일 구조
 ```
@@ -24,7 +28,7 @@ codeselect/
 ├── codeselect.py     # 메인 실행 파일
 ├── utils.py          # 완료: 공통 유틸리티 함수 
 ├── filetree.py       # 완료: 파일 트리 구조 관리
-├── selector.py       # 예정: 파일 선택 UI 
+├── selector.py       # 완료: 파일 선택 UI 
 ├── output.py         # 예정: 출력 형식 관리
 ├── dependency.py     # 예정: 의존성 분석
 └── cli.py            # 예정: 명령행 인터페이스
@@ -45,7 +49,7 @@ codeselect/
    - `collect_selected_content()` 함수
    - `collect_all_content()` 함수
 
-3. **selector.py**
+3. **selector.py** ✅
    - `FileSelector` 클래스
    - `interactive_selection()` 함수
 
