@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![CodeSelect Logo](https://img.shields.io/badge/CodeSelect-1.0.0-blue)
+![CodeSelect Logo](https://img.shields.io/badge/CodeSelect-1.1.0-blue)
 
 **Easily select and share code with AI assistants**
 
@@ -20,6 +20,7 @@ curl -sSL https://raw.githubusercontent.com/maynetee/codeselect/main/install.sh 
 ## ✨ Features
 
 - **Visual File Selection**: Interactive UI to easily select files with checkboxes
+- **Vim-style Navigation & Search**: Use `/` to search files and j/k/h/l for navigation
 - **Intelligent Code Analysis**: Automatically detects imports and relationships between files
 - **Multi-language Support**: Works with Python, C/C++, JavaScript, Java, Go, Ruby, PHP, Rust, Swift and more
 - **Zero Dependencies**: Works with standard Python libraries only
@@ -45,14 +46,17 @@ codeselect --help
 
 ## 🖥️ Interface Controls
 
-- **↑/↓**: Navigate between files
+- **↑/↓** or **j/k**: Navigate between files
 - **Space**: Toggle selection of file/directory
-- **←/→**: Collapse/expand directories
+- **←/→** or **h/l**: Collapse/expand directories
+- **/**: Enter search mode (supports regex patterns)
+- **^**: Toggle case sensitivity in search mode
+- **ESC**: Exit search mode or clear search results
 - **A**: Select all files
 - **N**: Deselect all files
 - **C**: Toggle clipboard copy
 - **D** or **Enter**: Complete selection and export
-- **X** or **Esc**: Exit without saving
+- **X**: Exit without saving
 
 ## 📄 Output Formats
 
@@ -75,7 +79,7 @@ codeselect --format llm
 ```
 usage: codeselect [-h] [-o OUTPUT] [--format {txt,md,llm}] [--skip-selection] [--no-clipboard] [--version] [directory]
 
-CodeSelect v1.0.0 - Select files to share with AI assistants
+CodeSelect v1.1.0 - Select files to share with AI assistants
 
 positional arguments:
   directory             Directory to scan (default: current directory)
@@ -112,3 +116,4 @@ To remove CodeSelect from your system:
 ```bash
 # One-line uninstallation
 curl -sSL https://raw.githubusercontent.com/maynetee/codeselect/main/uninstall.sh | bash
+```
