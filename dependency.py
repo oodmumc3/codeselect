@@ -13,17 +13,17 @@ import os
 
 def analyze_dependencies(root_path, file_contents):
     """
-    프로젝트 파일 간의 의존성 관계를 분석합니다.
+    Analyse dependency relationships between project files.
     
-    다양한 프로그래밍 언어의 import, include, require 등의 패턴을 인식하여
-    파일 간 의존성을 분석합니다.
+    Recognise patterns such as import, include, and require in various programming languages to analyse dependencies between
+    Analyses dependencies between files.
     
     Args:
-        root_path (str): 프로젝트 루트 경로
-        file_contents (list): 파일 내용 목록 [(경로, 내용), ...]
+        root_path (str): Project root path.
+        file_contents (list): List of file contents [(path, contents), ...]
         
     Returns:
-        dict: 파일별 의존성 정보 {파일경로: {의존성1, 의존성2, ...}, ...}
+        dict: file-specific dependency information {filepath: {dependency1, dependency2, ...}, ...}
     """
     dependencies = {}
     imports = {}

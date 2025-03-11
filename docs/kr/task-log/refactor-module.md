@@ -1,4 +1,4 @@
-# CodeSelect 모듈화 작업 계획
+# CodeSelect 모듈화 작업 계획 (완료)
 
 ## 완료된 작업
 - ✅ **utils.py**: 공통 유틸리티 함수 분리 (2025-03-10 완료)
@@ -79,5 +79,5 @@ codeselect/
    - 명령행 인수 처리 (`argparse` 관련 코드)
    - `main()` 함수 리팩토링
 
-7. **codeselect.py** ✅ (리팩토링)
+7. **codeselect.py** ✅
    - 모듈들을 임포트하고 조합하는 간결한 메인 스크립트로 변환

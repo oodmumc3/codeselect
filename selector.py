@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-selector.py - 파일 선택 UI 모듈
+selector.py - File selection UI module
 
-curses 기반의 대화형 파일 선택 인터페이스를 제공하는 모듈입니다.
+A module that provides a curses-based interactive file selection interface.
 """
 
 import os
@@ -13,17 +13,17 @@ from filetree import flatten_tree, count_selected_files
 
 class FileSelector:
     """
-    curses 기반의 대화형 파일 선택 인터페이스를 제공하는 클래스
+    Classes that provide an interactive file selection interface based on curses
     
-    사용자가 파일 트리에서 파일을 선택할 수 있는 UI를 제공합니다.
+    Provides a UI that allows the user to select a file from a file tree.
     """
     def __init__(self, root_node, stdscr):
         """
-        FileSelector 클래스 초기화
+        Initialising the FileSelector Class
         
         Args:
-            root_node (Node): 파일 트리의 루트 노드
-            stdscr (curses.window): curses 창 객체
+            root_node (Node): The root node of the file tree
+            stdscr (curses.window): curses window object
         """
         self.root_node = root_node
         self.stdscr = stdscr
@@ -36,7 +36,7 @@ class FileSelector:
         self.initialize_curses()
 
     def initialize_curses(self):
-        """curses 설정을 초기화합니다."""
+        """Initialise curses settings."""
         curses.start_color()
         curses.use_default_colors()
         # 색상 쌍 정의
@@ -57,19 +57,19 @@ class FileSelector:
         self.update_dimensions()
 
     def update_dimensions(self):
-        """화면 크기를 업데이트합니다."""
+        """Update the screen size."""
         self.height, self.width = self.stdscr.getmaxyx()
         self.max_visible = self.height - 6  # 상단에 통계를 위한 라인 추가
 
     def expand_all(self, expand=True):
-        """모든 디렉토리를 확장하거나 접습니다."""
+        """Expand or collapse all directories."""
         def _set_expanded(node, expand):
             """
-            노드와 그 자식들의 expanded 상태를 설정합니다.
+            Sets the expanded state of the node and its children.
             
             Args:
-                node (Node): 설정할 노드
-                expand (bool): 확장 여부
+                node (Node): The node to set
+                expand (bool): Whether to expand
             """
             if node.is_dir and node.children:
                 node.expanded = expand
@@ -98,7 +98,7 @@ class FileSelector:
                 current_node.selected = not current_node.selected
 
     def draw_tree(self):
-        """파일 트리를 그립니다."""
+        """Draw a file tree."""
         self.stdscr.clear()
         self.update_dimensions()
 
@@ -167,7 +167,7 @@ class FileSelector:
         self.stdscr.refresh()
 
     def toggle_selection(self, node):
-        """노드의 선택 상태를 전환하고, 디렉토리인 경우 그 자식들의 선택 상태도 전환합니다."""
+        """Toggles the selection state of the node, and if it is a directory, the selection state of its children."""
         node.selected = not node.selected
 
         if node.is_dir and node.children:
@@ -177,20 +177,20 @@ class FileSelector:
                     self.toggle_selection(child)
 
     def toggle_expand(self, node):
-        """디렉토리를 확장하거나 접습니다."""
+        """Expand or collapse a directory."""
         if node.is_dir:
             node.expanded = not node.expanded
             # 보이는 노드 목록 업데이트
             self.visible_nodes = flatten_tree(self.root_node)
 
     def select_all(self, select=True):
-        """모든 노드를 선택하거나 선택 해제합니다."""
+        """Select or deselect all nodes."""
         def _select_recursive(node):
             """
-            노드와 그 자식들의 선택 상태를 재귀적으로 설정합니다.
+            Recursively sets the selected state of a node and its children.
             
             Args:
-                node (Node): 설정할 노드
+                node (Node): The node to set.
             """
             node.selected = select
             if node.is_dir and node.children:
@@ -200,7 +200,7 @@ class FileSelector:
         _select_recursive(self.root_node)
 
     def run(self):
-        """선택 인터페이스를 실행합니다."""
+        """Launch the selection interface."""
         while True:
             self.draw_tree()
             key = self.stdscr.getch()
@@ -278,5 +278,5 @@ class FileSelector:
         return True
 
 def interactive_selection(root_node):
-    """대화형 파일 선택 인터페이스를 시작합니다."""
+    """Launch the interactive file selection interface."""
     return curses.wrapper(lambda stdscr: FileSelector(root_node, stdscr).run())

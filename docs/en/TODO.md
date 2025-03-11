@@ -1,17 +1,5 @@
 # 📌 TODO list
 
-## 🏗 Improve code structure
-✅ **Separate and modularise code** (`codeselect.py` single file → multiple modules)
-- `codeselect.py` is too big → split into functional modules
-- 📂 New module structure
-  - `filetree.py`: file tree and navigation
-  - `selector.py`: curses-based file selection UI
-  - `output.py`: Saving to various formats (txt, md, llm)
-  - cli.py`: Handles CLI commands and options
-  - `dependency.py`: Analyse dependencies between files in a project
-
----]
-
 ## 🔍 Added filtering and search functions
 ✅ **Vim-style file search (filtering after entering `/`)**.
 - Enter a search term after `/` → show only files containing that keyword
@@ -26,7 +14,7 @@
 - Save `.codeselectrc` file in project root to auto-load settings
 - JSON/YAML support (e.g. `include=[‘*.py’], exclude=[‘node_modules/’]`)
 
----]
+---
 
 ## 🛠 Performance optimisations and UI improvements
 ✅ **Navigation speed optimisation
@@ -43,7 +31,7 @@
 History of recently used files/directories
 - Save `.codeselect_history` file to keep recently selected files
 
----]
+---
 
 ## 🚀 CLI Options Improvements
 ✅ **Automatic run mode (`--auto-select`)**
@@ -58,7 +46,7 @@ History of recently used files/directories
 ✅ **Automatically copy clipboard option**.
 - Added `--no-clipboard` option to turn off auto-copy function
 
----]
+---
 
 ## 📄 Documentation
 ✅ Created `project_structure.md` (describes project structure)
@@ -68,16 +56,26 @@ History of recently used files/directories
 ✅ Create `dependency_analysis.md` (dependency analysis document)
 ✅ Create `output_formats.md` (describes output data formats)
 
----]
+---
 
 ### 🏁 **Organise your priorities**.
-🚀 **Add `1️⃣ Vim-style `/` search function** (top priority)  
+~~🚀 **Add `1️⃣ Vim-style `/` search function** (top priority)~~
 📌 **2️⃣ code structure improvement and modularisation** (`codeselect.py` → split into multiple files)  
 ⚡ **3️⃣ Optimised navigation speed and improved UI** (priority)  
 📦 **4️⃣ support for `.codeselectrc` configuration files**.  
 📜 **5️⃣ output formats extended (added support for `json`, `yaml`)**  
 
 
----]
+---
 
 # Completed tasks
+
+~~## 🏗 Improve code structure~~
+✅ **Separate and modularise code** (`codeselect.py` single file → multiple modules)
+- `codeselect.py` is too big → split into functional modules
+- 📂 New module structure
+  - `filetree.py`: file tree and navigation
+  - `selector.py`: curses-based file selection UI
+  - `output.py`: Saving to various formats (txt, md, llm)
+  - cli.py`: Handles CLI commands and options
+  - `dependency.py`: Analyse dependencies between files in a project

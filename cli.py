@@ -22,10 +22,10 @@ __version__ = "1.0.0"
 
 def parse_arguments():
     """
-    명령행 인수를 파싱합니다.
+    Parses command-line arguments.
     
     Returns:
-        argparse.Namespace: 파싱된 명령행 인수
+        argparse.Namespace: the parsed command line arguments.
     """
     parser = argparse.ArgumentParser(
         description=f"CodeSelect v{__version__} - Select files to share with AI assistants"
@@ -66,10 +66,10 @@ def parse_arguments():
 
 def main():
     """
-    메인 함수 - CodeSelect 프로그램의 진입점입니다.
+    Main Function - The entry point for the CodeSelect program.
     
     Returns:
-        int: 프로그램 종료 코드 (0: 정상 종료, 1: 오류)
+        int: the programme exit code (0: normal exit, 1: error).
     """
     args = parse_arguments()
 

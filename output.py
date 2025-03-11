@@ -3,11 +3,11 @@
 """
 CodeSelect - Output module
 
-이 모듈은 선택된 파일 트리와 내용을 다양한 형식으로 출력하는 기능을 제공합니다.
-다음 출력 형식을 지원합니다:
-- txt: 기본 텍스트 형식
-- md: 깃허브 호환 마크다운 형식
-- llm: 언어 모델 최적화 형식
+This module provides the ability to output the selected file tree and its contents in various formats.
+It supports the following output formats
+- txt: Basic text format
+- MD: GitHub-compatible markdown format
+- LLM: Language model optimised format
 """
 
 import os
@@ -23,6 +23,16 @@ def write_file_tree_to_string(node, prefix='', is_last=True):
         
     Returns:
         str: 파일 트리 문자열 표현
+    ---
+    Converts a file tree structure to a string.
+    
+    Args:
+        node: the current node
+        prefix: Indentation prefix
+        is_last: whether the current node is the last child of the parent
+        
+    Returns:
+        str: File tree string representation
     """
     result = ""
 
@@ -55,6 +65,20 @@ def write_output_file(output_path, root_path, root_node, file_contents, output_f
         
     Returns:
         str: 출력 파일 경로
+
+    ---
+    Write the file tree and selections to the output file.
+    
+    Args:
+        output_path: Path to the output file
+        root_path: Project root path
+        root_node: File tree root node
+        file_contents: List of file contents [(path, contents), ...].
+        output_format: Output format (‘txt’, ‘md’, ‘llm’)
+        dependencies: Dependency information between files (required for llm format)
+        
+    Returns:
+        str: path to output file
     """
     if output_format == 'md':
         write_markdown_output(output_path, root_path, root_node, file_contents)
@@ -102,6 +126,14 @@ def write_markdown_output(output_path, root_path, root_node, file_contents):
         root_path: 프로젝트 루트 경로
         root_node: 파일 트리 루트 노드
         file_contents: 파일 내용 목록 [(경로, 내용), ...]
+    ---
+    Output in GitHub-compatible markdown format.
+    
+    Args:
+        output_path: Path to the output file
+        root_path: Project root path
+        root_node: File tree root node
+        file_contents: List of file contents [(path, content), ...]
     """
     with open(output_path, 'w', encoding='utf-8') as f:
         # 헤더 작성
@@ -176,10 +208,19 @@ def write_llm_optimized_output(output_path, root_path, root_node, file_contents,
         root_node: 파일 트리 루트 노드
         file_contents: 파일 내용 목록 [(경로, 내용), ...]
         dependencies: 파일 간 의존성 정보
+    ---
+    Output in a format optimised for LLM analysis.
+    
+    Args:
+        output_path: Path to the output file
+        root_path: Project root path
+        root_node: File tree root node
+        file_contents: List of file contents [(path, contents), ...].
+        dependencies: Dependency information between files
     """
     # count_selected_files 함수를 모듈에서 임포트하지 않았기 때문에 필요한 함수를 정의
     def count_selected_files(node):
-        """선택된 파일(디렉토리 제외)의 수를 계산합니다."""
+        """Counts the number of selected files (excluding directories)."""
         count = 0
         if not node.is_dir and node.selected:
             count = 1
@@ -190,7 +231,7 @@ def write_llm_optimized_output(output_path, root_path, root_node, file_contents,
     
     # flatten_tree 함수를 모듈에서 임포트하지 않았기 때문에 필요한 함수를 정의
     def flatten_tree(node, visible_only=True):
-        """트리를 네비게이션용 노드 리스트로 평탄화합니다."""
+        """Flattens the tree into a list of nodes for navigation."""
         flat_nodes = []
 
         def _traverse(node, level=0):

@@ -53,13 +53,13 @@ def get_language_name(extension):
 
 def try_copy_to_clipboard(text):
     """
-    텍스트를 클립보드에 복사하려고 시도합니다. 실패 시 적절한 대체 방법을 사용합니다.
+    Attempts to copy the text to the clipboard. On failure, use an appropriate fallback method.
     
     Args:
-        text (str): 클립보드에 복사할 텍스트
+        text (str): The text to copy to the clipboard.
         
     Returns:
-        bool: 클립보드 복사 성공 여부
+        bool: Clipboard copy success or failure
     """
     try:
         # 플랫폼별 방법 시도
@@ -98,14 +98,14 @@ def try_copy_to_clipboard(text):
 
 def generate_output_filename(directory_path, output_format='txt'):
     """
-    디렉토리 이름을 기반으로 고유한 출력 파일 이름을 생성합니다.
+    Generate unique output filenames based on directory names.
     
     Args:
-        directory_path (str): 대상 디렉토리 경로
-        output_format (str): 출력 파일 형식 (기본값: 'txt')
+        directory_path (str): Destination directory path
+        output_format (str): Output file format (default: ‘txt’)
         
     Returns:
-        str: 생성된 출력 파일 이름
+        str: Generated output file name
     """
     base_name = os.path.basename(os.path.abspath(directory_path))
     extension = f".{output_format}"
@@ -123,17 +123,17 @@ def generate_output_filename(directory_path, output_format='txt'):
 
 def should_ignore_path(path, ignore_patterns=None):
     """
-    주어진 경로가 무시해야 할 패턴과 일치하는지 확인합니다.
+    Checks if the given path matches a pattern that should be ignored.
     
     Args:
-        path (str): 확인할 파일 또는 디렉토리 경로
-        ignore_patterns (list): 무시할 패턴 목록 (기본값: None)
+        path (str): The path to the file or directory to check.
+        ignore_patterns (list): List of patterns to ignore (default: None)
         
     Returns:
-        bool: 경로가 무시되어야 하면 True, 그렇지 않으면 False
+        Bool: True if the path should be ignored, False otherwise.
     """
     if ignore_patterns is None:
-        ignore_patterns = ['.git', '__pycache__', '*.pyc', '.DS_Store', '.idea', '.vscode']
+        ignore_patterns = ['.git', '__pycache__', '*.pyc', '.DS_Store', '.idea', '.vscode', 'node_modules', 'dist']
 
     basename = os.path.basename(path)
     for pattern in ignore_patterns:

@@ -1,78 +1,65 @@
-# 프로젝트 구조
+# 📂 프로젝트 구조 (`codeselect`)
 
-## 📂 루트 디렉토리
-
+## 🏗️ **폴더 및 파일 개요**
 ```
 codeselect/
-│── codeselect.py # 파일 선택을 위한 메인 스크립트
-│── utils.py # 유틸리티 함수
-│── filetree.py # 파일 트리 구조 관리
-│── selector.py # 대화형 파일 선택 UI
-│── output.py # 출력 형식 관리(WIP)
-│── dependency.py # 종속성 분석(WIP)
-cli.py # 명령줄 인터페이스(WIP)
-│── install.sh # 설치 스크립트
-│── uninstall.sh # 제거 스크립트
-│── README.md # 프로젝트 문서 파일
+  ├── codeselect.py        # 메인 실행 스크립트 (CLI 진입점)
+  ├── cli.py               # CLI 명령어 처리 및 실행 흐름 제어
+  ├── filetree.py          # 파일 트리 탐색 및 계층 구조 관리
+  ├── selector.py          # curses 기반 파일 선택 UI
+  ├── output.py            # 선택된 파일의 출력 (txt, md, llm 지원)
+  ├── dependency.py        # 파일 간 의존성 분석 (import/include 탐색)
+  ├── utils.py             # 공통 유틸리티 함수 (경로 처리, 클립보드 복사 등)
+  ├── install.sh           # 프로젝트 설치 스크립트
+  ├── uninstall.sh         # 프로젝트 제거 스크립트
+  ├── tests/               # 유닛 테스트 폴더
+  ├── docs/                # 문서화 폴더 (설계 개요, 사용법 등)
+  └── .codeselectrc        # 사용자 설정 파일 (필터링, 출력 설정)
 ```
 
-## 📄 주요 파일
+## 🛠️ **핵심 모듈 설명**
 
-- `codeselect.py`: 프로젝트의 메인 스크립트로, 모든 컴포넌트를 오케스트레이션합니다.
-- `utils.py`: 언어 매핑, 클립보드 작업 및 파일 이름 생성과 같은 일반적인 유틸리티 함수.
-- `filetree.py`: 파일 트리 구조를 관리하여 노드 표현 및 콘텐츠 수집을 제공합니다.
-- `selector.py`: 커서 기반 대화형 파일 선택 UI를 제공합니다.
-- `output.py`: 출력 형식(txt, md, llm)을 관리합니다.
-- `dependency.py`: 프로젝트 파일 간의 종속성을 분석합니다.
-- `cli.py`: 명령줄 인자 처리를 처리합니다.
-- `install.sh`: CodeSelect`를 설치하는 셸 스크립트로, 실행 파일을 사용자의 홈 디렉터리에 배치합니다.
-- `uninstall.sh`: 시스템에서 `CodeSelect`를 제거하는 셸 스크립트입니다.
-- `README.md`: 프로젝트 개요 및 사용법을 설명하는 문서.
+### 1️⃣ `codeselect.py` (프로그램 실행 진입점)
+- `cli.py`를 호출하여 프로그램을 실행
+- `argparse`로 CLI 옵션을 파싱 후, `filetree.py`에서 파일을 탐색하고 `selector.py`로 선택 UI 실행
 
-## 🏗 현재 모듈화 진행 상황
+### 2️⃣ `cli.py` (CLI 명령어 및 실행 흐름 관리)
+- 명령어 인수(`--format`, `--skip-selection` 등)를 처리
+- `filetree.build_file_tree()`를 호출하여 파일 목록 생성
+- `selector.interactive_selection()`을 실행해 UI에서 파일 선택
+- `dependency.analyze_dependencies()`를 호출해 종속성 분석 수행
+- 최종적으로 `output.write_output_file()`로 결과 저장
 
-### 완료된 모듈
+### 3️⃣ `filetree.py` (파일 트리 탐색 및 관리)
+- `build_file_tree(root_path)`: 디렉토리 내부 파일 및 폴더를 계층적으로 분석하여 트리 구조 생성
+- `flatten_tree(node)`: 트리를 리스트로 변환해 UI에서 쉽게 탐색 가능하도록 변환
 
-1. **utils.py**
-   - get_language_name()`, `try_copy_to_clipboard()`, `generate_output_filename()`, `should_ignore_path()`를 포함한 유틸리티 함수를 제공합니다.
-   - 애플리케이션 전체에서 사용되는 일반적인 연산을 처리합니다.
+### 4️⃣ `selector.py` (파일 선택 UI)
+- `FileSelector` 클래스: curses 기반 인터랙티브 UI 제공
+- `run()`: 파일 선택 인터페이스 실행
+- `toggle_selection(node)`: Space 키로 파일 선택/해제
 
-2. **filetree.py**
-   - 파일/디렉토리 표현을 위한 `Node` 클래스를 구현합니다.
-   - 파일 트리를 빌드하고 트래버스하는 함수를 제공합니다.
-   - 콜렉트_선택된_콘텐츠()`와 `콜렉트_모든_콘텐츠()`를 통해 파일 콘텐츠 수집을 처리합니다.
+### 5️⃣ `dependency.py` (의존성 분석)
+- `analyze_dependencies(root_path, file_contents)`: `import`, `require`, `include` 패턴을 분석하여 파일 간 참조 관계를 추출
+- Python, JavaScript, C/C++ 등의 언어를 지원
 
-3. **selector.py**
-   - 대화형 커서 기반 UI를 위한 `FileSelector` 클래스를 구현합니다.
-   - 파일 트리 선택, 탐색, 조작을 위한 함수를 제공합니다.
-   - 사용자 키보드 입력과 화면 표시를 처리합니다.
+### 6️⃣ `output.py` (출력 파일 저장)
+- `write_output_file(output_path, format)`: 선택된 파일을 다양한 형식(txt, md, llm)으로 변환하여 저장
+- `llm` 포맷은 AI 모델이 이해하기 쉬운 구조로 가공
 
-### 진행 중인 모듈
+### 7️⃣ `utils.py` (유틸리티 함수)
+- `generate_output_filename(root_path, format)`: 출력 파일명을 자동 생성
+- `try_copy_to_clipboard(content)`: 선택된 파일 내용을 클립보드에 복사
 
-4. **output.py** (예정)
-   - 다양한 출력 형식(txt, md, llm)을 처리합니다.
-   - 파일 트리 구조와 콘텐츠를 작성하는 함수가 포함될 예정입니다.
-   - 다양한 출력 대상에 대한 포맷을 지원할 예정입니다.
+### 8️⃣ `tests/` (테스트 코드)
+- `filetree_test.py`: 파일 트리 생성 테스트
+- `selector_test.py`: 파일 선택 UI 테스트
+- `dependency_test.py`: 의존성 분석 테스트
 
-5. **dependency.py** (예정)
-   - 프로젝트 파일 간의 관계를 분석합니다.
-   - 파일 간 가져오기 및 참조를 감지합니다.
-   - 파일 종속성에 대한 인사이트를 제공합니다.
-
-6. **cli.py** (출시 예정)
-   - 명령줄 인수 구문 분석을 처리합니다.
-   - 다양한 프로그램 옵션에 대한 인터페이스를 제공합니다.
-   - 주요 실행 흐름을 정리합니다.
-
-7. **codeselect.py** (리팩터링 예정)
-   - 모듈 간 가져오기 및 조정을 간소화할 예정입니다.
-   - 애플리케이션의 진입점 역할을 합니다.
-
-## 📑 향후 개선 예정.
-
-- 사용자 지정 무시 패턴:** 사용자가 추가 파일 제외 규칙을 설정할 수 있도록 지원합니다.
-- 종속성 매핑:** 내부 및 외부 종속성을 더 잘 감지합니다.
-- **UI 탐색 기능 개선:** 파일 선택 프로세스를 최적화하기 위해 검색 및 필터링 기능이 개선되었습니다.
-- Vim 스타일 검색 기능:** 키보드 단축키를 사용해 파일을 검색할 수 있습니다.
-- 프로젝트 구성 파일 지원:** 프로젝트별 설정을 위한 '.codeselectrc' 파일 추가.
-- **추가 출력 형식:** JSON, YAML 및 기타 형식에 대한 지원을 추가합니다.
+---
+## 🚀 **실행 흐름 요약**
+1️⃣ `codeselect.py` 실행 → `cli.py`에서 인자 파싱
+2️⃣ `filetree.py`에서 파일 트리 생성
+3️⃣ `selector.py`에서 curses UI 실행 (파일 선택)
+4️⃣ `dependency.py`에서 파일 간 의존성 분석
+5️⃣ `output.py`에서 선택된 파일을 저장 및 클립보드 복사

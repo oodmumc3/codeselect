@@ -1,80 +1,65 @@
-# Project structure
+# 📂 Project structure (`codeselect`)
 
-## 📂 Root directory
-
+## 🏗️ **Overview of folders and files**.
 ```
 codeselect/
-│── codeselect.py # Main script to select files
-│── utils.py      # Utility functions
-│── filetree.py   # File tree structure management
-│── selector.py   # Interactive file selection UI
-│── output.py     # Output format management
-│── dependency.py # Dependency analysis (WIP)
-│── cli.py        # Command line interface (WIP)
-│── install.sh    # Installation script
-│── uninstall.sh  # Uninstall script
-│── README.md     # Project documentation file
+  ├── codeselect.py # Main executable script (CLI entry point)
+  ├── cli.py # CLI command processing and execution flow control
+  ├── filetree.py # File tree navigation and hierarchy management
+  ├── selector.py # curses-based file selection UI
+  ├── output.py # Output of selected files (txt, md, llm supported)
+  ├── dependency.py # Analyse dependencies between files (import/include detection)
+  utils.py # Common utility functions (path handling, clipboard copy, etc.)
+  install.sh # Project installation script
+  uninstall.sh # project uninstall script
+  tests/ # Unit test folder
+  docs/ # documentation folder (design overview, usage, etc.)
+  └── .codeselectrc # customisation files (filtering, output settings)
 ```
 
-## 📄 Main files
+## 🛠️ **Core module descriptions
 
-- `codeselect.py`: The main script of the project, responsible for orchestrating all components.
-- `utils.py`: Common utility functions like language mapping, clipboard operations, and filename generation.
-- `filetree.py`: Manages file tree structure, providing node representation and content collection.
-- `selector.py`: Provides a curses-based interactive file selection UI.
-- `output.py`: Manages output formats (txt, md, llm).
-- `dependency.py`: Analyzes dependencies between project files.
-- `cli.py`: Handles command line arguments processing.
-- `install.sh`: Shell script to install `CodeSelect`, placing the executable in the user's home directory.
-- `uninstall.sh`: Shell script to uninstall `CodeSelect` from the system.
-- `README.md`: A document describing the project overview and usage.
+### 1️⃣ `codeselect.py` (entry point to run the programme)
+- Call `cli.py` to run the programme
+- Parse CLI options with `argparse`, browse files with `filetree.py` and run selector UI with `selector.py`.
 
-## 🏗 Current Modularization Progress
+### 2️⃣ `cli.py` (manages CLI commands and execution flow)
+- Handle command arguments (`--format`, `--skip-selection`, etc.)
+- Create a list of files by calling `filetree.build_file_tree()`.
+- Run `selector.interactive_selection()` to select files in the UI
+- Perform dependency analysis by calling `dependency.analyse_dependencies()`.
+- Finally, save the results with `output.write_output_file()`.
 
-### Completed Modules
+### 3️⃣ `filetree.py` (File tree navigation and management)
+- build_file_tree(root_path)`: Hierarchically analyse files and folders inside a directory to create a tree structure.
+- flatten_tree(node)`: Converts a tree into a list for easy navigation in the UI.
 
-1. **utils.py**
-   - Provides utility functions including `get_language_name()`, `try_copy_to_clipboard()`, `generate_output_filename()`, and `should_ignore_path()`.
-   - Handles common operations used across the application.
+### 4️⃣ `selector.py` (file selector UI)
+- Class `FileSelector`: provides an interactive UI based on curses
+- run()`: Run the file selection interface
+- toggle_selection(node)`: Toggle file selection/deselection with space key
 
-2. **filetree.py**
-   - Implements the `Node` class for file/directory representation.
-   - Provides functions to build and traverse file trees.
-   - Handles file content collection via `collect_selected_content()` and `collect_all_content()`.
+### 5️⃣ `dependency.py` (dependency analysis)
+- analyse_dependencies(root_path, file_contents)`: Analyse `import`, `require`, `include` patterns to extract reference relationships between files
+- Supports languages such as Python, JavaScript, C/C++, etc.
 
-3. **selector.py**
-   - Implements the `FileSelector` class for the interactive curses-based UI.
-   - Provides functions for selecting, navigating, and manipulating the file tree.
-   - Handles user keyboard input and screen display.
+### 6️⃣ `output.py` (save output file)
+- write_output_file(output_path, format)`: converts the selected file to various formats (txt, md, llm) and saves it.
+- The `llm` format is processed into a structure that is easier for AI models to understand.
 
-4. **output.py**
-   - Handles different output formats (txt, md, llm).
-   - Includes functions for writing file tree structure and content.
-   - Provides specialized formatting for different output purposes.
-   - Contains `write_file_tree_to_string()`, `write_output_file()`, `write_markdown_output()`, and `write_llm_optimized_output()` functions.
+### 7️⃣ `utils.py` (utility functions)
+- generate_output_filename(root_path, format)`: generate output filename automatically
+- `try_copy_to_clipboard(content)`: copy selected file contents to clipboard
 
-### Completed Modules (Continued)
+### 8️⃣ `tests/` (test code)
+- `filetree_test.py`: Test file tree generation
+- `selector_test.py`: Test file selector UI
+- `dependency_test.py`: dependency analysis test
 
-5. **dependency.py**
-   - Analyzes relationships between project files.
-   - Detects imports and references across multiple programming languages.
-   - Provides insights about internal and external dependencies.
-   - Contains `analyze_dependencies()` function to map references between project files.
-
-6. **cli.py** (Upcoming)
-   - Will handle command line argument parsing.
-   - Will provide interface to various program options.
-   - Will organize the main execution flow.
-
-7. **codeselect.py** (To be refactored)
-   - Will be streamlined to import and coordinate between modules.
-   - Will serve as the entry point for the application.
-
-## 📑 Future improvements.
-
-- **Customised ignore patterns:** Support for users to set additional file exclusion rules.
-- **Dependency mapping:** Better detection of internal and external dependencies.
-- **UI navigation enhancements:** Improved search and filtering capabilities to optimise the file selection process.
-- **Vim-style search functionality:** Allow searching for files using keyboard shortcuts.
-- **Support for project configuration files:** Add `.codeselectrc` for project-specific settings.
-- **Additional output formats:** Add support for JSON, YAML, and other formats.
+---
+## 🚀 **Summary of the execution flow**.
+Run 1️⃣ `codeselect.py` → parse arguments in `cli.py`
+Create a file tree at 2️⃣ `filetree.py`
+Run curses UI in 3️⃣ `selector.py` (select a file)
+4️⃣ Analyse dependencies between files in `dependency.py`
+5️⃣ `output.py` to save and clipboard copy selected files

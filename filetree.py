@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-filetree.py - 파일 트리 구조 관리 모듈
+filetree.py - File tree structure management module
 
-파일 트리 구조를 생성하고 관리하는 기능을 제공하는 모듈입니다.
+This module provides functionality to create and manage file tree structures.
 """
 
 import os
@@ -13,18 +13,18 @@ from utils import should_ignore_path
 
 class Node:
     """
-    파일 트리의 노드를 표현하는 클래스
+    Classes that represent nodes in a file tree
     
-    파일 또는 디렉토리를 나타내며, 디렉토리인 경우 자식 노드를 가질 수 있습니다.
+    Represents a file or directory, which, if a directory, can have child nodes.
     """
     def __init__(self, name, is_dir, parent=None):
         """
-        Node 클래스 초기화
+        Initialise Node Class
         
         Args:
-            name (str): 노드의 이름 (파일/디렉토리 이름)
-            is_dir (bool): 디렉토리 여부
-            parent (Node, optional): 부모 노드
+            name (str): Name of the node (file/directory name)
+            is_dir (bool): Whether it is a directory
+            parent (Node, optional): Parent node
         """
         self.name = name
         self.is_dir = is_dir
@@ -36,10 +36,10 @@ class Node:
     @property
     def path(self):
         """
-        노드의 전체 경로를 반환합니다.
+        Returns the full path to the node.
         
         Returns:
-            str: 노드의 전체 경로
+            str: the full path of the node
         """
         if self.parent is None:
             return self.name
@@ -50,27 +50,27 @@ class Node:
 
 def build_file_tree(root_path, ignore_patterns=None):
     """
-    파일 구조를 나타내는 트리를 구축합니다.
+    Constructs a tree representing the file structure.
     
     Args:
-        root_path (str): 루트 디렉토리 경로
-        ignore_patterns (list, optional): 무시할 패턴 목록
+        root_path (str): Path to the root directory.
+        ignore_patterns (list, optional): List of patterns to ignore.
         
     Returns:
-        Node: 파일 트리의 루트 노드
+        Node: the root node of the file tree.
     """
     if ignore_patterns is None:
         ignore_patterns = ['.git', '__pycache__', '*.pyc', '.DS_Store', '.idea', '.vscode']
 
     def should_ignore(path):
         """
-        주어진 경로가 무시해야 할 패턴과 일치하는지 확인합니다.
+        Checks if the given path matches a pattern that should be ignored.
         
         Args:
-            path (str): 확인할 경로
+            path (str): The path to check.
             
         Returns:
-            bool: 무시해야 하면 True, 그렇지 않으면 False
+            bool: True if it should be ignored, False otherwise
         """
         return should_ignore_path(os.path.basename(path), ignore_patterns)
 
@@ -83,12 +83,12 @@ def build_file_tree(root_path, ignore_patterns=None):
 
     def add_path(current_node, path_parts, full_path):
         """
-        경로의 각 부분을 트리에 추가합니다.
+        Adds each part of the path to the tree.
         
         Args:
-            current_node (Node): 현재 노드
-            path_parts (list): 경로 부분 목록
-            full_path (str): 전체 경로
+            current_node (Node): Current node
+            path_parts (list): List of path parts
+            full_path (str): Full path
         """
         if not path_parts:
             return
@@ -147,24 +147,24 @@ def build_file_tree(root_path, ignore_patterns=None):
 
 def flatten_tree(node, visible_only=True):
     """
-    트리를 네비게이션을 위한 노드 목록으로 평탄화합니다.
+    Flattens the tree into a list of nodes for navigation.
     
     Args:
-        node (Node): 루트 노드
-        visible_only (bool, optional): 보이는 노드만 포함할지 여부
+        node (Node): Root node
+        visible_only (bool, optional): Whether to include only visible nodes.
         
     Returns:
-        list: (노드, 레벨) 튜플의 목록
+        list: a list of (node, level) tuples.
     """
     flat_nodes = []
 
     def _traverse(node, level=0):
         """
-        트리를 순회하며 평탄화된 노드 목록을 생성합니다.
+        Traverse the tree and generate a flattened list of nodes.
         
         Args:
-            node (Node): 현재 노드
-            level (int, optional): 현재 레벨
+            node (Node): The current node
+            level (int, optional): Current level
         """
         # 루트 노드는 건너뛰되, 루트의 자식부터는 level 0으로 시작
         if node.parent is not None:  # 루트 노드 건너뛰기
@@ -185,13 +185,13 @@ def flatten_tree(node, visible_only=True):
 
 def count_selected_files(node):
     """
-    선택된 파일 수를 계산합니다 (디렉토리 제외).
+    Count the number of selected files (excluding directories).
     
     Args:
-        node (Node): 루트 노드
+        node (Node): The root node.
         
     Returns:
-        int: 선택된 파일 수
+        int: Number of selected files
     """
     count = 0
     if not node.is_dir and node.selected:
@@ -203,14 +203,14 @@ def count_selected_files(node):
 
 def collect_selected_content(node, root_path):
     """
-    선택된 파일들의 내용을 수집합니다.
+    Gather the contents of the selected files.
     
     Args:
-        node (Node): 루트 노드
-        root_path (str): 루트 디렉토리 경로
+        node (Node): Root node
+        root_path (str): Root directory path
         
     Returns:
-        list: (파일 경로, 내용) 튜플의 목록
+        list: a list of (file path, content) tuples.
     """
     results = []
 
@@ -244,14 +244,14 @@ def collect_selected_content(node, root_path):
 
 def collect_all_content(node, root_path):
     """
-    모든 파일의 내용을 수집합니다 (분석용).
+    Collect the contents of all files (for analysis).
     
     Args:
-        node (Node): 루트 노드
-        root_path (str): 루트 디렉토리 경로
+        node (Node): Root node
+        root_path (str): Root directory path
         
     Returns:
-        list: (파일 경로, 내용) 튜플의 목록
+        list: a list of (file path, content) tuples.
     """
     results = []
 
