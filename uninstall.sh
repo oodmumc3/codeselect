@@ -12,6 +12,15 @@ else
     echo "Executable not found at $CODESELECT_PATH"
 fi
 
+# Remove module directory
+CODESELECT_DIR="$HOME/.local/lib/codeselect"
+if [ -d "$CODESELECT_DIR" ]; then
+    rm -rf "$CODESELECT_DIR"
+    echo "Removed module directory from $CODESELECT_DIR"
+else
+    echo "Module directory not found at $CODESELECT_DIR"
+fi
+
 # Remove bash completion if it exists
 COMPLETION_FILE="$HOME/.local/share/bash-completion/completions/codeselect"
 if [ -f "$COMPLETION_FILE" ]; then
@@ -29,6 +38,8 @@ elif [[ "$SHELL" == *"bash"* ]]; then
     else
         SHELL_CONFIG="$HOME/.bashrc"
     fi
+elif [[ "$SHELL" == *"fish"* ]]; then
+    SHELL_CONFIG="$HOME/.config/fish/config.fish"
 else
     SHELL_CONFIG="$HOME/.profile"
 fi
@@ -38,8 +49,13 @@ if [ -f "$SHELL_CONFIG" ]; then
     # Create a backup
     cp "$SHELL_CONFIG" "${SHELL_CONFIG}.bak"
 
-    # Remove the PATH line
-    grep -v 'export PATH="$HOME/.local/bin:$PATH"' "$SHELL_CONFIG" > "${SHELL_CONFIG}.tmp"
+    # Remove the PATH line (fish와 다른 쉘에 따라 다른 처리)
+    if [[ "$SHELL" == *"fish"* ]]; then
+        grep -v 'set -gx PATH $HOME/.local/bin $PATH' "$SHELL_CONFIG" > "${SHELL_CONFIG}.tmp"
+    else
+        grep -v 'export PATH="$HOME/.local/bin:$PATH"' "$SHELL_CONFIG" > "${SHELL_CONFIG}.tmp"
+    fi
+    
     mv "${SHELL_CONFIG}.tmp" "$SHELL_CONFIG"
     echo "Removed PATH entry from $SHELL_CONFIG"
     echo "Backup created at ${SHELL_CONFIG}.bak"
@@ -48,12 +64,14 @@ fi
 echo "
 Uninstallation complete!
 
+The following files and directories have been removed:
+- Executable: $HOME/.local/bin/codeselect
+- Module directory: $HOME/.local/lib/codeselect/
+- Bash completion: $HOME/.local/share/bash-completion/completions/codeselect
+- PATH entry in shell configuration
+
 Note: You may need to restart your terminal or run:
   source $SHELL_CONFIG
-
-If you installed CodeSelect as the only tool in ~/.local/bin,
-you can also delete this directory:
-  rm -rf ~/.local/bin
 "
 
 exit 0

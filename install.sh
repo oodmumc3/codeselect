@@ -15,7 +15,7 @@ mkdir -p "$CODESELECT_DIR"
 
 # 필요한 모듈 파일 다운로드 또는 복사
 echo "Installing CodeSelect modules..."
-MODULES=("codeselect.py" "cli.py" "utils.py" "filetree.py" "selector.py" "output.py" "dependency.py")
+MODULES=("codeselect.py" "cli.py" "utils.py" "filetree.py" "selector.py" "selector_ui.py" "selector_actions.py" "output.py" "dependency.py")
 
 for MODULE in "${MODULES[@]}"; do
   echo "Installing $MODULE..."
@@ -53,14 +53,24 @@ if [[ ":$PATH:" != *":$USER_BIN:"* ]]; then
         else
             SHELL_CONFIG="$HOME/.bashrc"
         fi
+    elif [[ "$SHELL" == *"fish"* ]]; then
+        FISH_CONFIG_DIR="$HOME/.config/fish"
+        mkdir -p "$FISH_CONFIG_DIR"
+        SHELL_CONFIG="$FISH_CONFIG_DIR/config.fish"
+        # Fish 쉘은 다른 문법을 사용합니다
+        echo "set -gx PATH \$HOME/.local/bin \$PATH" >> "$SHELL_CONFIG"
+        echo "Added $USER_BIN to your PATH in $SHELL_CONFIG"
+        echo "To use immediately, run: source $SHELL_CONFIG"
     else
         SHELL_CONFIG="$HOME/.profile"
     fi
 
-    # Add to PATH
-    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$SHELL_CONFIG"
-    echo "Added $USER_BIN to your PATH in $SHELL_CONFIG"
-    echo "To use immediately, run: source $SHELL_CONFIG"
+    # Add to PATH (fish 쉘이 아닌 경우)
+    if [[ "$SHELL" != *"fish"* ]]; then
+        echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$SHELL_CONFIG"
+        echo "Added $USER_BIN to your PATH in $SHELL_CONFIG"
+        echo "To use immediately, run: source $SHELL_CONFIG"
+    fi
 fi
 
 echo "
@@ -70,6 +80,11 @@ Usage:
   codeselect                 # Analyze current directory
   codeselect /path/to/project  # Analyze a specific directory
   codeselect --help          # Show help
+
+Features:
+  - Automatically respects .gitignore patterns in your project
+  - Interactive file selection with tree view 
+  - Multiple output formats for different AI assistants
 
 CodeSelect is now installed at: $CODESELECT_PATH
 All modules installed at: $CODESELECT_DIR
