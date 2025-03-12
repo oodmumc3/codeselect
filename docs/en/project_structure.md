@@ -1,65 +1,85 @@
-# 📂 Project structure (`codeselect`)
+# 📂 **Project Structure (`codeselect`)**
 
-## 🏗️ **Overview of folders and files**.
+## 🏗️ **Folder and File Overview**
 ```
 codeselect/
-  ├── codeselect.py # Main executable script (CLI entry point)
-  ├── cli.py # CLI command processing and execution flow control
-  ├── filetree.py # File tree navigation and hierarchy management
-  ├── selector.py # curses-based file selection UI
-  ├── output.py # Output of selected files (txt, md, llm supported)
-  ├── dependency.py # Analyse dependencies between files (import/include detection)
-  utils.py # Common utility functions (path handling, clipboard copy, etc.)
-  install.sh # Project installation script
-  uninstall.sh # project uninstall script
-  tests/ # Unit test folder
-  docs/ # documentation folder (design overview, usage, etc.)
-  └── .codeselectrc # customisation files (filtering, output settings)
+  ├── codeselect.py        # Main execution script (CLI entry point)
+  ├── cli.py               # Handles CLI commands and execution flow
+  ├── filetree.py          # Manages file tree exploration and hierarchy
+  ├── selector.py          # Entry point for the file selection interface
+  ├── selector_ui.py       # Curses-based UI implementation (FileSelector class)
+  ├── selector_actions.py  # Collection of functions for file selection actions
+  ├── output.py            # Handles output of selected files (txt, md, llm formats)
+  ├── dependency.py        # Analyzes file dependencies (import/include search)
+  ├── utils.py             # Common utility functions (path handling, clipboard copy, etc.)
+  ├── install.sh           # Project installation script
+  ├── uninstall.sh         # Project uninstallation script
+  ├── tests/               # Unit test directory
+  │   ├── test_filetree.py         # Tests for file tree generation
+  │   ├── test_selector.py         # Tests for file selection interface
+  │   ├── test_selector_actions.py # Tests for file selection actions
+  │   ├── test_selector_ui.py      # Tests for UI components
+  │   └── test_dependency.py       # Tests for dependency analysis
+  ├── docs/                # Documentation folder (design overview, usage guide, etc.)
 ```
 
-## 🛠️ **Core module descriptions
+## 🛠️ **Core Modules Overview**
 
-### 1️⃣ `codeselect.py` (entry point to run the programme)
-- Call `cli.py` to run the programme
-- Parse CLI options with `argparse`, browse files with `filetree.py` and run selector UI with `selector.py`.
+### 1️⃣ `codeselect.py` (Program Entry Point)
+- Calls `cli.py` to execute the program.
+- Parses CLI options using `argparse`, then:
+  - Uses `filetree.py` to explore files.
+  - Calls `selector.py` to launch the selection UI.
 
-### 2️⃣ `cli.py` (manages CLI commands and execution flow)
-- Handle command arguments (`--format`, `--skip-selection`, etc.)
-- Create a list of files by calling `filetree.build_file_tree()`.
-- Run `selector.interactive_selection()` to select files in the UI
-- Perform dependency analysis by calling `dependency.analyse_dependencies()`.
-- Finally, save the results with `output.write_output_file()`.
+### 2️⃣ `cli.py` (CLI Command and Execution Flow Management)
+- Processes command-line arguments (e.g., `--format`, `--skip-selection`).
+- Calls `filetree.build_file_tree()` to generate a file list.
+- Executes `selector.interactive_selection()` to start the interactive selection UI.
+- Calls `dependency.analyze_dependencies()` to analyze dependencies.
+- Saves the final selection using `output.write_output_file()`.
 
-### 3️⃣ `filetree.py` (File tree navigation and management)
-- build_file_tree(root_path)`: Hierarchically analyse files and folders inside a directory to create a tree structure.
-- flatten_tree(node)`: Converts a tree into a list for easy navigation in the UI.
+### 3️⃣ `filetree.py` (File Tree Exploration and Management)
+- `build_file_tree(root_path)`: Analyzes directory structure and builds a hierarchical file tree.
+- `flatten_tree(node)`: Converts the tree into a list for easier navigation in the UI.
 
-### 4️⃣ `selector.py` (file selector UI)
-- Class `FileSelector`: provides an interactive UI based on curses
-- run()`: Run the file selection interface
-- toggle_selection(node)`: Toggle file selection/deselection with space key
+### 4️⃣ File Selection Modules (Split into Three Files)
+#### a. `selector.py` (External Interface)
+- `interactive_selection(root_node)`: Initializes the curses environment and runs `FileSelector`.
+- Serves as an entry point for external modules.
 
-### 5️⃣ `dependency.py` (dependency analysis)
-- analyse_dependencies(root_path, file_contents)`: Analyse `import`, `require`, `include` patterns to extract reference relationships between files
-- Supports languages such as Python, JavaScript, C/C++, etc.
+#### b. `selector_ui.py` (UI Components)
+- `FileSelector` class: Implements a curses-based interactive UI.
+- Handles rendering, key input, and UI logic.
+- Key functions:
+  - `run()`: Executes the interactive selection loop.
+  - `draw_tree()`: Visualizes the file tree.
+  - `process_key()`: Handles key inputs.
 
-### 6️⃣ `output.py` (save output file)
-- write_output_file(output_path, format)`: converts the selected file to various formats (txt, md, llm) and saves it.
-- The `llm` format is processed into a structure that is easier for AI models to understand.
+#### c. `selector_actions.py` (Action Functions)
+- `toggle_selection(node)`: Toggles selection state of a file/folder.
+- `toggle_expand(node)`: Expands/collapses directories.
+- `apply_search_filter()`: Applies a search filter.
+- `select_all()`: Selects/deselects all files.
+- `toggle_current_dir_selection()`: Selects/deselects files only in the current directory.
 
-### 7️⃣ `utils.py` (utility functions)
-- generate_output_filename(root_path, format)`: generate output filename automatically
-- `try_copy_to_clipboard(content)`: copy selected file contents to clipboard
+### 5️⃣ `dependency.py` (Dependency Analysis)
+- `analyze_dependencies(root_path, file_contents)`: Extracts file references by analyzing `import`, `require`, and `include` patterns.
+- Supports multiple languages, including Python, JavaScript, and C/C++.
 
-### 8️⃣ `tests/` (test code)
-- `filetree_test.py`: Test file tree generation
-- `selector_test.py`: Test file selector UI
-- `dependency_test.py`: dependency analysis test
+### 6️⃣ `output.py` (Saving Selected Files)
+- `write_output_file(output_path, format)`: Saves selected files in different formats (`txt`, `md`, `llm`).
+- The `llm` format is structured for better AI model processing.
+
+### 7️⃣ `utils.py` (Utility Functions)
+- `generate_output_filename(root_path, format)`: Automatically generates output file names.
+- `try_copy_to_clipboard(content)`: Copies selected content to the clipboard.
 
 ---
-## 🚀 **Summary of the execution flow**.
-Run 1️⃣ `codeselect.py` → parse arguments in `cli.py`
-Create a file tree at 2️⃣ `filetree.py`
-Run curses UI in 3️⃣ `selector.py` (select a file)
-4️⃣ Analyse dependencies between files in `dependency.py`
-5️⃣ `output.py` to save and clipboard copy selected files
+## 🚀 **Execution Flow Summary**
+1️⃣ Run `codeselect.py` → Parse arguments in `cli.py`.  
+2️⃣ Generate the file tree using `filetree.py`.  
+3️⃣ Initialize the curses environment via `selector.py`.  
+4️⃣ `FileSelector` in `selector_ui.py` provides the selection interface.  
+5️⃣ Handle user actions via `selector_actions.py`.  
+6️⃣ Analyze file dependencies with `dependency.py`.  
+7️⃣ Save the selected files and copy content to the clipboard using `output.py`.  

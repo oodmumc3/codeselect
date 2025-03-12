@@ -21,7 +21,6 @@ codeselect/
   │   ├── test_selector_ui.py      # UI 컴포넌트 테스트
   │   └── test_dependency.py       # 의존성 분석 테스트
   ├── docs/                # 문서화 폴더 (설계 개요, 사용법 등)
-  └── .codeselectrc        # 사용자 설정 파일 (필터링, 출력 설정)
 ```
 
 ## 🛠️ **핵심 모듈 설명**
