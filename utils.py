@@ -121,14 +121,39 @@ def generate_output_filename(directory_path, output_format='txt'):
 
     return output_name
 
+def load_gitignore_patterns(directory):
+    """
+    Reads `.gitignore` file and returns a list of valid ignore patterns.
+
+    Args:
+        directory (str): The directory containing the .gitignore file.
+
+    Returns:
+        list: List of ignore patterns from the .gitignore file.
+    """
+    gitignore_path = os.path.join(directory, ".gitignore")
+    if not os.path.isfile(gitignore_path):
+        return []
+    
+    patterns = []
+    with open(gitignore_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            # Skip empty lines and comments
+            if line and not line.startswith("#"):
+                patterns.append(line)
+    
+    return patterns
+
 def should_ignore_path(path, ignore_patterns=None):
     """
     Checks if the given path matches a pattern that should be ignored.
-    
+    Implements basic .gitignore style pattern matching.
+
     Args:
         path (str): The path to the file or directory to check.
         ignore_patterns (list): List of patterns to ignore (default: None)
-        
+
     Returns:
         Bool: True if the path should be ignored, False otherwise.
     """
@@ -136,7 +161,29 @@ def should_ignore_path(path, ignore_patterns=None):
         ignore_patterns = ['.git', '__pycache__', '*.pyc', '.DS_Store', '.idea', '.vscode', 'node_modules', 'dist']
 
     basename = os.path.basename(path)
+    should_ignore = False
+    
     for pattern in ignore_patterns:
-        if fnmatch.fnmatch(basename, pattern):
-            return True
-    return False
+        # Skip empty patterns
+        if not pattern:
+            continue
+            
+        # Handle negated patterns (patterns with !)
+        if pattern.startswith('!'):
+            negated_pattern = pattern[1:]
+            # If the path matches a negated pattern, it should NOT be ignored
+            if fnmatch.fnmatch(basename, negated_pattern) or fnmatch.fnmatch(path, negated_pattern):
+                return False
+        # Handle directory-specific patterns (patterns ending with /)
+        elif pattern.endswith('/') and os.path.isdir(path):
+            if fnmatch.fnmatch(basename, pattern[:-1]) or fnmatch.fnmatch(path, pattern):
+                should_ignore = True
+        # Handle wildcard patterns
+        elif '*' in pattern:
+            if fnmatch.fnmatch(basename, pattern) or fnmatch.fnmatch(path, pattern):
+                should_ignore = True
+        # Handle exact matches
+        elif basename == pattern or path.endswith('/' + pattern):
+            should_ignore = True
+    
+    return should_ignore

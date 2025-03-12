@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils import get_language_name, generate_output_filename, should_ignore_path
+from utils import get_language_name, generate_output_filename, should_ignore_path, load_gitignore_patterns
 
 class TestUtils(unittest.TestCase):
     """utils.py 모듈에 있는 함수들을 테스트하는 클래스"""
@@ -49,17 +49,69 @@ class TestUtils(unittest.TestCase):
         self.assertTrue(should_ignore_path('__pycache__'))
         self.assertTrue(should_ignore_path('example.pyc'))
         self.assertTrue(should_ignore_path('.DS_Store'))
-        
+
         # 무시하지 않아야 할 경로
         self.assertFalse(should_ignore_path('main.py'))
         self.assertFalse(should_ignore_path('README.md'))
-        
+
         # 사용자 정의 패턴으로 테스트
         custom_patterns = ['*.log', 'temp_*', 'backup']
         self.assertTrue(should_ignore_path('example.log', custom_patterns))
         self.assertTrue(should_ignore_path('temp_file', custom_patterns))
         self.assertTrue(should_ignore_path('backup', custom_patterns))
         self.assertFalse(should_ignore_path('main.py', custom_patterns))
+        
+        # gitignore 스타일 패턴으로 테스트
+        gitignore_patterns = ['*.log', 'ignored_dir/', 'ignored_file.txt', '!important.log']
+        self.assertTrue(should_ignore_path('error.log', gitignore_patterns))
+        self.assertTrue(should_ignore_path('ignored_file.txt', gitignore_patterns))
+        # 부정 패턴 테스트
+        self.assertFalse(should_ignore_path('important.log', gitignore_patterns))
+        # 디렉토리 패턴 테스트 (디렉토리 경로로 설정)
+        temp_dir = tempfile.TemporaryDirectory()
+        ignored_dir = os.path.join(temp_dir.name, 'ignored_dir')
+        os.makedirs(ignored_dir)
+        self.assertTrue(should_ignore_path(ignored_dir, gitignore_patterns))
+        temp_dir.cleanup()
+        
+    def test_load_gitignore_patterns(self):
+        """load_gitignore_patterns 함수가 .gitignore 파일에서 패턴을 올바르게 로드하는지 테스트합니다."""
+        # 임시 디렉토리 생성
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # 테스트용 .gitignore 파일 생성
+            gitignore_content = """
+# 주석 라인
+*.log
+ignored_dir/
+
+# 빈 라인
+
+ignored_file.txt
+!important.log
+            """
+            gitignore_path = os.path.join(temp_dir, ".gitignore")
+            with open(gitignore_path, "w") as f:
+                f.write(gitignore_content)
+            
+            # 패턴 로드
+            patterns = load_gitignore_patterns(temp_dir)
+            
+            # 예상 패턴 확인
+            self.assertEqual(len(patterns), 4)
+            self.assertIn("*.log", patterns)
+            self.assertIn("ignored_dir/", patterns)
+            self.assertIn("ignored_file.txt", patterns)
+            self.assertIn("!important.log", patterns)
+            
+            # 주석과 빈 라인은 포함되지 않아야 함
+            self.assertNotIn("# 주석 라인", patterns)
+            self.assertNotIn("# 빈 라인", patterns)
+            self.assertNotIn("", patterns)
+            
+            # .gitignore 파일이 없는 경우
+            non_gitignore_dir = os.path.join(temp_dir, "subdir")
+            os.makedirs(non_gitignore_dir)
+            self.assertEqual(load_gitignore_patterns(non_gitignore_dir), [])
 
 if __name__ == '__main__':
     unittest.main()
