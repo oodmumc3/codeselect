@@ -1,13 +1,7 @@
 # 📌 TODO list
 
-## 🔍 Added filtering and search functions
-✅ **Vim-style file search (filtering after entering `/`)**.
-- Enter a search term after `/` → show only files containing that keyword
-- Regular expression support (`/.*\.py$` → filter only `.py` files)
-- Case sensitive option (`/foo` vs `/Foo`)
-
-✅ **More sophisticated `.gitignore` and filtering support**.
-- Automatically reflect `.gitignore` to determine which files to ignore
+~~✅ **Support for more sophisticated `.gitignore` and filtering**~~ (Done)
+- Automatically reflect `.gitignore` to determine which files to ignore~~ (DONE)
 - Added `--include` and `--exclude` CLI options (e.g. `--include ‘*.py’ --exclude ‘tests/’`)
 
 ✅ **Support for project-specific configuration files (`.codeselectrc`)
@@ -31,13 +25,23 @@
 History of recently used files/directories
 - Save `.codeselect_history` file to keep recently selected files
 
+✅ **Optimise file tree navigation
+- Improved performance by utilising `os.scandir()` instead of `os.walk()`.
+- Improved speed of `.gitignore` and filtering
+
+File tree asynchronous processing
+- Considered introducing `asyncio`-based asynchronous directory traversal
+- Quickly build file trees, even for large projects
+
+✅ **Flexible filtering support
+- Improved `.gitignore‘ to allow additional filtering settings in `.codeselectrc’ in addition to `.gitignore'
+
 ---
+## 🚀 Improved CLI options
+✅ **Automatic execution mode (`--auto-select`)
+- Automatically select specific files and run them without UI (`codeselect --auto-select ‘*.py’`)
 
-## 🚀 CLI Options Improvements
-✅ **Automatic run mode (`--auto-select`)**
-- Automatically select a specific file and run it without UI (`codeselect --auto-select ‘*.py’`)
-
-✅ **Result preview (`--preview`)**
+✅ **Preview results (`--preview`)**
 - Adds the ability to preview the contents of selected files
 
 ✅ **Extended output format
@@ -56,26 +60,51 @@ History of recently used files/directories
 ✅ Create `dependency_analysis.md` (dependency analysis document)
 ✅ Create `output_formats.md` (describes output data formats)
 
----
-
-### 🏁 **Organise your priorities**.
-~~🚀 **Add `1️⃣ Vim-style `/` search function** (top priority)~~
-📌 **2️⃣ code structure improvement and modularisation** (`codeselect.py` → split into multiple files)  
-⚡ **3️⃣ Optimised navigation speed and improved UI** (priority)  
-📦 **4️⃣ support for `.codeselectrc` configuration files**.  
-📜 **5️⃣ output formats extended (added support for `json`, `yaml`)**  
+---]
+### 🏁 **Prioritise**
+~~🚀 **Add `1️⃣ Vim-style `/` search function** (top priority)~~ (done)
+~~📌 **Improve and modularise code structure of 2️⃣ (`codeselect.py` → split into multiple files)~~ (Done)
+~~🔍 **Added **3️⃣ `.gitignore` support** (improved file filtering)~~ (Done)
+⚡ **4️⃣ navigation speed optimisation and UI improvements** (Done)
+📦 **5️⃣ `.codeselectrc` configuration file support** (improved filtering)
+📜 **6️⃣ output format extended (added `json`, `yaml` support)**
 
 
 ---
 
 # Completed tasks
 
-~~## 🏗 Improve code structure~~
+~~## 🏗 Improved code structure~~.
 ✅ **Separate and modularise code** (`codeselect.py` single file → multiple modules)
-- `codeselect.py` is too big → split into functional modules
-- 📂 New module structure
+- `codeselect.py` is too bloated → split into functional modules
+- 📂 **New module structure** ✅ **New module structure
   - `filetree.py`: file tree and navigation
   - `selector.py`: curses-based file selection UI
   - `output.py`: Saving to various formats (txt, md, llm)
   - cli.py`: Handles CLI commands and options
-  - `dependency.py`: Analyse dependencies between files in a project
+  - `dependency.py`: Analyses dependencies between files in a project
+
+~~## 🔧 Support for `.gitignore`-based file filtering~~
+✅ **Automatically parse and filter `.gitignore` files**.
+- Automatic detection of `.gitignore` files in the project root
+- Support for different pattern types:
+  - Wildcard pattern (`*.log`)
+  - Directory-specific pattern (`ignored_dir/`)
+  - Exclusion pattern (`!important.log`)
+- Added pattern loading and parsing functionality to `utils.py`
+- Improved file path matching algorithm
+- Added tests (pattern loading, file filtering)
+
+~~## 🔍 Added Vim-style file searching~~
+✅ **Implemented Vim-style search (search after `/` input)**.
+- Enter search mode with `/` key, type search term and hit enter to execute search
+- Support for regular expressions (e.g. `/.*\.py$` → search only .py files)
+- Case-sensitive toggle function (using the `^` key)
+- Preserves tree structure in search results
+
+Implemented **Vim-style navigation**.
+- Move up/down with `j/k` keys
+- Close/open folders with `h/l` keys
+- Restore full list with ESC key in search mode
+
+---

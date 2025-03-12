@@ -1,9 +1,50 @@
 # Change Log
 
-## v1.1.0 (2024-03-12)
+## v1.3.0 (2025-03-12)
 
-### 🔍 Added Vim-style search function
-- Support for search mode via `/` key (Vim style)
+### 🚀 Added `.gitignore` support
+- Implemented automatic recognition of `.gitignore` files and pattern processing
+- Supports various `.gitignore` patterns
+  - Wildcard pattern (`*.log`)
+  - Directory-specific pattern (`ignored_dir/`)
+  - Exclusion pattern (`!important.log`)
+- Integration of .gitignore patterns into existing hardcoded ignore lists
+
+### 💻 Improved file filtering
+- Improved file path comparison algorithm
+- Support pattern matching both full paths and base names
+- Improved filtering accuracy for files in subdirectories
+
+### 🧪 Testing
+- Added `.gitignore` related unit tests
+- Tested pattern loading functionality
+- Test file filtering accuracy
+
+## v1.2.0 (2025-03-12)
+
+### 🏗 Code structure improvements
+- Split `selector.py` module into three modules to improve readability and maintainability
+  - `selector_actions.py`: functions related to file selection, search, and expand/collapse actions
+  - `selector_ui.py`: user interface related `FileSelector` classes
+  - `selector.py`: `interactive_selection` function in the role of external interface
+
+### 💻 Refactoring benefits
+- Separation of concerns: clear separation between UI code and behavioural logic
+- Ease of testing: each module can be tested independently
+- Extensibility: Easier to add new behaviours or UI elements
+
+### 🧪 Testing
+- Add unit tests for all separated modules
+- Ensure compatibility with existing functionality
+
+### 📖 Documentation
+- Update project structure documentation
+- Reflect module separation in design overview documentation
+
+## v1.1.0 (12-03-2024)
+
+### 🔍 Added Vim-style search functionality
+- Support for search mode via `/` keys (Vim style)
 - full support for regular expression search (e.g. `/.*\.py$`, `/test_.*`)
 - Case-sensitive toggle functionality (using the `^` key)
 - Maintain tree structure in search results - show directory hierarchy
@@ -23,9 +64,9 @@
 ### 💻 Quality improvements
 - Improved tree structure maintenance algorithm
 - Optimised status management when cancelling/completing a search
-- Improved error handling (show error when entering invalid regex)
+- Improved error handling (display error when incorrect regex is entered)
 
-## v1.0.0 (2024-03-11)
+## v1.0.0 (11-03-2024)
 
 ### 🏗 Code Structure Improvements
 - CodeSelect has been modularized for better maintainability and future extensibility
@@ -34,13 +75,15 @@
   - `filetree.py`: File tree structure management
   - `selector.py`: Interactive file selection UI
   - `output.py`: Output format management
-  - Future modules in development: dependency.py, cli.py
+  - `dependency.py`: Project dependency analysis
+  - `cli.py`: Command line interface
+  - `codeselect.py`: Simple entry point script
 
 ### 🔧 Refactoring
-- Improved code organization with proper separation of concerns
+- Improved code organisation with proper separation of concerns
 - Better isolation of functionality into single-responsibility modules
 - Enhanced readability through clear module boundaries
-- No functional changes to existing behavior
+- No functional changes to existing behaviour
 
 ### 🧪 Testing
 - Added unit tests for all new modules

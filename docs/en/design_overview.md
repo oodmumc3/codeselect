@@ -13,8 +13,10 @@ CodeSelect consists of three main modules: **File Tree Generator**, **Interactiv
 
 ### 📂 Main Modules
 1. file tree generator (`build_file_tree`)
-   - Scans the project directory and generates a file tree.
-   - Filters out unnecessary files based on `.gitignore` and certain patterns.
+   - Scans the project directory to generate a file tree.
+   - Automatically parse `.gitignore` files to extract patterns and filter out unnecessary files.
+   - Interprets and applies various `.gitignore` patterns (wildcard, directory-specific, exclusion patterns).
+   - Uses a combination of hardcoded default ignore patterns (`.git`, `__pycache__`, etc.) and `.gitignore` patterns.
    - Internally utilises `os.walk()` to traverse the directory structure.
 
 2. Interactive file selectors

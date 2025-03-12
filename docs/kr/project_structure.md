@@ -70,6 +70,8 @@ codeselect/
 ### 7️⃣ `utils.py` (유틸리티 함수)
 - `generate_output_filename(root_path, format)`: 출력 파일명을 자동 생성
 - `try_copy_to_clipboard(content)`: 선택된 파일 내용을 클립보드에 복사
+- `load_gitignore_patterns(directory)`: .gitignore 파일에서 패턴을 로드하고 파싱
+- `should_ignore_path(path, ignore_patterns)`: 파일 경로가 무시 패턴과 일치하는지 확인
 
 ---
 ## 🚀 **실행 흐름 요약**
