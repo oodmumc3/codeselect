@@ -53,27 +53,34 @@ class TestNode(unittest.TestCase):
 
 class TestFileTree(unittest.TestCase):
     """파일 트리 관련 함수들을 테스트하는 클래스"""
-    
+
     def setUp(self):
         """테스트 전에 임시 디렉토리와 파일 구조를 생성합니다."""
         self.temp_dir = tempfile.TemporaryDirectory()
         self.test_dir = self.temp_dir.name
-        
+
         # 기본 디렉토리 구조 생성
         os.makedirs(os.path.join(self.test_dir, "dir1"))
         os.makedirs(os.path.join(self.test_dir, "dir2", "subdir"))
-        
+
         # 몇 가지 파일 생성
         Path(os.path.join(self.test_dir, "file1.txt")).write_text("File 1 content")
         Path(os.path.join(self.test_dir, "dir1", "file2.py")).write_text("File 2 content")
         Path(os.path.join(self.test_dir, "dir2", "file3.md")).write_text("File 3 content")
         Path(os.path.join(self.test_dir, "dir2", "subdir", "file4.js")).write_text("File 4 content")
-        
+
         # 무시할 파일과 디렉토리 생성
         os.makedirs(os.path.join(self.test_dir, ".git"))
         os.makedirs(os.path.join(self.test_dir, "__pycache__"))
         Path(os.path.join(self.test_dir, ".DS_Store")).touch()
         Path(os.path.join(self.test_dir, "dir1", "temp.pyc")).touch()
+        
+        # .gitignore 테스트를 위한 추가 파일 생성
+        Path(os.path.join(self.test_dir, "ignored_file.txt")).touch()
+        Path(os.path.join(self.test_dir, "error.log")).touch()
+        Path(os.path.join(self.test_dir, "important.log")).touch()
+        os.makedirs(os.path.join(self.test_dir, "ignored_dir"))
+        Path(os.path.join(self.test_dir, "ignored_dir", "some_file.txt")).touch()
     
     def tearDown(self):
         """테스트 후에 임시 디렉토리를 정리합니다."""
@@ -190,18 +197,18 @@ class TestFileTree(unittest.TestCase):
     def test_collect_all_content(self):
         """collect_all_content 함수가 모든 파일의 내용을 올바르게 수집하는지 테스트합니다."""
         root_node = build_file_tree(self.test_dir)
-        
+
         # 일부 파일 선택 해제 (영향을 주지 않아야 함)
         root_node.children["dir1"].children["file2.py"].selected = False
-        
+
         contents = collect_all_content(root_node, self.test_dir)
-        
+
         # 모든 파일이 포함되어야 함
         self.assertEqual(len(contents), 4)  # file1.txt, file2.py, file3.md, file4.js
-        
+
         # 파일 경로와 내용 확인
         paths = [path for path, _ in contents]
-        
+
         base_name = os.path.basename(self.test_dir)
         expected_paths = [
             "file1.txt",
@@ -209,10 +216,35 @@ class TestFileTree(unittest.TestCase):
             f"{base_name}{os.sep}dir2{os.sep}file3.md",
             f"{base_name}{os.sep}dir2{os.sep}subdir{os.sep}file4.js"
         ]
-        
+
         # 각 파일이 포함되어 있는지 확인
         for exp_path in expected_paths:
             self.assertTrue(any(exp_path in p for p in paths), f"경로 {exp_path}가 결과에 없습니다")
+            
+    def test_gitignore_filtering(self):
+        """`.gitignore` 패턴이 파일과 디렉토리를 올바르게 제외하는지 테스트합니다."""
+        # 테스트용 .gitignore 파일 생성
+        with open(os.path.join(self.test_dir, ".gitignore"), "w") as f:
+            f.write("*.log\nignored_dir/\nignored_file.txt\n!important.log")
+        
+        # 파일 트리 빌드
+        root_node = build_file_tree(self.test_dir)
+        
+        # .gitignore에 의해 필터링되는지 확인
+        root_children = list(root_node.children.keys())
+        
+        # 무시되어야 하는 파일들 확인
+        self.assertNotIn("ignored_dir", root_children)
+        self.assertNotIn("ignored_file.txt", root_children)
+        self.assertNotIn("error.log", root_children)
+        
+        # 제외된 파일은 포함되어야 함
+        self.assertIn("important.log", root_children)
+        
+        # 기본 필터링도 여전히 적용되는지 확인
+        self.assertNotIn(".git", root_children)
+        self.assertNotIn("__pycache__", root_children)
+        self.assertNotIn(".DS_Store", root_children)
 
 if __name__ == '__main__':
     unittest.main()

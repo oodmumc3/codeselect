@@ -9,7 +9,7 @@ This module provides functionality to create and manage file tree structures.
 import os
 import sys
 import fnmatch
-from utils import should_ignore_path
+from utils import should_ignore_path, load_gitignore_patterns
 
 class Node:
     """
@@ -51,28 +51,37 @@ class Node:
 def build_file_tree(root_path, ignore_patterns=None):
     """
     Constructs a tree representing the file structure.
-    
+
     Args:
         root_path (str): Path to the root directory.
         ignore_patterns (list, optional): List of patterns to ignore.
-        
+
     Returns:
         Node: the root node of the file tree.
     """
+    # Default patterns to ignore
+    default_patterns = ['.git', '__pycache__', '*.pyc', '.DS_Store', '.idea', '.vscode']
+    
+    # Load patterns from .gitignore if it exists
+    gitignore_patterns = load_gitignore_patterns(root_path)
+    
+    # Combine ignore patterns, with .gitignore patterns taking precedence
     if ignore_patterns is None:
-        ignore_patterns = ['.git', '__pycache__', '*.pyc', '.DS_Store', '.idea', '.vscode']
+        ignore_patterns = default_patterns + gitignore_patterns
+    else:
+        ignore_patterns = ignore_patterns + gitignore_patterns
 
     def should_ignore(path):
         """
         Checks if the given path matches a pattern that should be ignored.
-        
+
         Args:
             path (str): The path to check.
-            
+
         Returns:
             bool: True if it should be ignored, False otherwise
         """
-        return should_ignore_path(os.path.basename(path), ignore_patterns)
+        return should_ignore_path(path, ignore_patterns)
 
     root_name = os.path.basename(root_path.rstrip(os.sep))
     if not root_name:  # 루트 디렉토리 경우
@@ -121,7 +130,8 @@ def build_file_tree(root_path, ignore_patterns=None):
         if rel_path == '.':
             # 루트에 있는 파일 추가
             for filename in filenames:
-                if filename not in root_node.children and not should_ignore(filename):
+                full_path = os.path.join(dirpath, filename)
+                if filename not in root_node.children and not should_ignore(full_path):
                     file_node = Node(filename, False, root_node)
                     root_node.children[filename] = file_node
         else:
@@ -139,7 +149,8 @@ def build_file_tree(root_path, ignore_patterns=None):
                     break
             else:
                 for filename in filenames:
-                    if not should_ignore(filename) and filename not in current.children:
+                    full_path = os.path.join(dirpath, filename)
+                    if not should_ignore(full_path) and filename not in current.children:
                         file_node = Node(filename, False, current)
                         current.children[filename] = file_node
 
