@@ -189,10 +189,171 @@ class TestSelectorActions(unittest.TestCase):
             search_query, False, self.root_node, original_nodes, visible_nodes
         )
         
-        # 검색 결과가 없을 때의 처리 확인
+        # 검색 결과가 없을 때의 처리 확인 (새로운 동작 방식: visible_nodes는 빈 리스트가 되어야 함)
         self.assertFalse(success)
         self.assertEqual(error_message, "검색 결과 없음")
-        self.assertEqual(visible_nodes, original_nodes)
+        # self.assertEqual(visible_nodes, original_nodes) # 이전 동작
+        self.assertEqual(len(visible_nodes), 0) # 수정된 동작: 빈 리스트여야 함
+
+
+# Helper to get node names from a list of (Node, level) tuples
+def get_node_names(nodes_with_levels):
+    return sorted([node.name for node, level in nodes_with_levels])
+
+class TestApplySearchFilterMultiPattern(unittest.TestCase):
+    def setUp(self):
+        # test_root
+        # ├── common_utils
+        # │   ├── script.py
+        # │   └── Helper.PY
+        # ├── data_files
+        # │   ├── report.md
+        # │   └── DATA.log
+        # ├── another_empty_dir
+        # ├── main_test.py
+        # └── notes.txt
+        self.root = Node("test_root", is_dir=True)
+        self.common_utils = Node("common_utils", is_dir=True, parent=self.root)
+        self.script_py = Node("script.py", is_dir=False, parent=self.common_utils)
+        self.helper_PY = Node("Helper.PY", is_dir=False, parent=self.common_utils) # Uppercase extension
+        self.common_utils.children = {"script.py": self.script_py, "Helper.PY": self.helper_PY}
+
+        self.data_files = Node("data_files", is_dir=True, parent=self.root)
+        self.report_md = Node("report.md", is_dir=False, parent=self.data_files)
+        self.data_log = Node("DATA.log", is_dir=False, parent=self.data_files) # Uppercase name
+        self.data_files.children = {"report.md": self.report_md, "DATA.log": self.data_log}
+
+        self.another_empty_dir = Node("another_empty_dir", is_dir=True, parent=self.root) # Empty dir
+
+        self.main_test_py = Node("main_test.py", is_dir=False, parent=self.root)
+        self.notes_txt = Node("notes.txt", is_dir=False, parent=self.root)
+
+        self.root.children = {
+            "common_utils": self.common_utils,
+            "data_files": self.data_files,
+            "another_empty_dir": self.another_empty_dir,
+            "main_test.py": self.main_test_py,
+            "notes.txt": self.notes_txt
+        }
+
+        # Manually set expanded for testing parent expansion logic later
+        self.root.expanded = False
+        self.common_utils.expanded = False
+        self.data_files.expanded = False
+
+        # Original nodes for reference (full tree)
+        # Correctly import flatten_tree from filetree module
+        current_dir = Path(__file__).resolve().parent
+        project_root = current_dir.parent
+        sys.path.append(str(project_root)) # Add project root to sys.path
+        from filetree import flatten_tree # Now this import should work
+
+        self.original_nodes = flatten_tree(self.root)
+        # Ensure all nodes in original_nodes have their parents set for the functions to work
+        for node, _ in self.original_nodes:
+            if node.parent: # if not root
+                # this is already handled by Node class structure, but good to be aware
+                pass
+
+
+    def test_or_logic_multiple_patterns(self):
+        visible_nodes_out = []
+        queries = ["*.txt", "*.md"] # Case-insensitive by default
+        success, msg = apply_search_filter(queries, False, self.root, self.original_nodes, visible_nodes_out)
+        self.assertTrue(success)
+        self.assertEqual(msg, "")
+        self.assertEqual(get_node_names(visible_nodes_out), sorted(["test_root", "data_files", "report.md", "notes.txt"]))
+
+    def test_wildcard_usage_multiple_patterns(self):
+        visible_nodes_out = []
+        queries = ["*util*", "test*.py"] # common_utils, main_test.py
+        success, msg = apply_search_filter(queries, False, self.root, self.original_nodes, visible_nodes_out)
+        self.assertTrue(success)
+        self.assertEqual(msg, "")
+        # common_utils and its children (script.py, Helper.PY) + main_test.py + root
+        expected_nodes = ["test_root", "common_utils", "script.py", "Helper.PY", "main_test.py"]
+        self.assertEqual(get_node_names(visible_nodes_out), sorted(expected_nodes))
+
+    def test_case_sensitive_search(self):
+        visible_nodes_out = []
+        queries = ["DATA.*", "*.PY"] # DATA.log, Helper.PY
+        success, msg = apply_search_filter(queries, True, self.root, self.original_nodes, visible_nodes_out) # case_sensitive = True
+        self.assertTrue(success)
+        self.assertEqual(msg, "")
+        expected_nodes = ["test_root", "common_utils", "Helper.PY", "data_files", "DATA.log"]
+        self.assertEqual(get_node_names(visible_nodes_out), sorted(expected_nodes))
+
+    def test_case_insensitive_search(self):
+        visible_nodes_out = []
+        # Using same queries as sensitive, but expecting more matches
+        queries = ["DATA.*", "*.PY"] # data.log, DATA.log, script.py, Helper.PY
+        success, msg = apply_search_filter(queries, False, self.root, self.original_nodes, visible_nodes_out) # case_sensitive = False
+        self.assertTrue(success)
+        self.assertEqual(msg, "")
+        expected_nodes = ["test_root", "common_utils", "script.py", "Helper.PY", "data_files", "DATA.log"]
+        self.assertEqual(get_node_names(visible_nodes_out), sorted(expected_nodes))
+
+    def test_no_matching_results(self):
+        visible_nodes_out = []
+        queries = ["nonexistent.file", "*.foo"]
+        success, msg = apply_search_filter(queries, False, self.root, self.original_nodes, visible_nodes_out)
+        self.assertFalse(success)
+        self.assertEqual(msg, "검색 결과 없음")
+        self.assertEqual(len(visible_nodes_out), 0) # Should be an empty list
+
+    def test_empty_query_list(self):
+        visible_nodes_out = []
+        queries = []
+        success, msg = apply_search_filter(queries, False, self.root, self.original_nodes, visible_nodes_out)
+        self.assertTrue(success)
+        self.assertEqual(msg, "")
+        self.assertEqual(get_node_names(visible_nodes_out), get_node_names(self.original_nodes)) # Should be original_nodes
+
+    def test_query_list_with_empty_whitespace_strings(self):
+        visible_nodes_out = []
+        queries = ["", " *.py ", " "] # Should behave like ["*.py"]
+        success, msg = apply_search_filter(queries, False, self.root, self.original_nodes, visible_nodes_out)
+        self.assertTrue(success)
+        self.assertEqual(msg, "")
+        # Expecting script.py, Helper.PY (due to case-insensitivity), main_test.py and their parents
+        expected_nodes = ["test_root", "common_utils", "script.py", "Helper.PY", "main_test.py"]
+        self.assertEqual(get_node_names(visible_nodes_out), sorted(expected_nodes))
+
+    def test_invalid_regular_expression(self):
+        visible_nodes_out = []
+        queries = ["*[.py"] # Invalid regex
+        success, msg = apply_search_filter(queries, False, self.root, self.original_nodes, visible_nodes_out)
+        self.assertFalse(success)
+        self.assertEqual(msg, "잘못된 정규식")
+        # visible_nodes_out might be undefined or empty, not strictly specified for this error.
+        # The primary check is the return tuple.
+
+    def test_parent_directory_inclusion_and_expansion(self):
+        # Reset expansion states for this specific test
+        self.root.expanded = False
+        self.common_utils.expanded = False
+        self.data_files.expanded = False
+
+        visible_nodes_out = []
+        # Match one file in common_utils and one in data_files
+        queries = ["script.py", "report.md"]
+        success, msg = apply_search_filter(queries, False, self.root, self.original_nodes, visible_nodes_out)
+        self.assertTrue(success)
+        self.assertEqual(msg, "")
+
+        expected_node_names = ["test_root", "common_utils", "script.py", "data_files", "report.md"]
+        self.assertEqual(get_node_names(visible_nodes_out), sorted(expected_node_names))
+
+        # Check expansion status
+        # Create a map of nodes from visible_nodes_out for easy lookup
+        result_nodes_map = {node.name: node for node, level in visible_nodes_out}
+
+        self.assertTrue(result_nodes_map["test_root"].expanded, "Root node should be expanded")
+        self.assertTrue(result_nodes_map["common_utils"].expanded, "common_utils should be expanded")
+        self.assertTrue(result_nodes_map["data_files"].expanded, "data_files should be expanded")
+        # another_empty_dir should not be in results and thus its expansion state is not set by this function
+        self.assertFalse(self.another_empty_dir.expanded, "another_empty_dir should not be expanded by this search")
+
 
 if __name__ == '__main__':
     unittest.main()
