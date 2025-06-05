@@ -14,13 +14,13 @@ from utils import should_ignore_path, load_gitignore_patterns
 class Node:
     """
     Classes that represent nodes in a file tree
-    
+
     Represents a file or directory, which, if a directory, can have child nodes.
     """
     def __init__(self, name, is_dir, parent=None):
         """
         Initialise Node Class
-        
+
         Args:
             name (str): Name of the node (file/directory name)
             is_dir (bool): Whether it is a directory
@@ -37,7 +37,7 @@ class Node:
     def path(self):
         """
         Returns the full path to the node.
-        
+
         Returns:
             str: the full path of the node
         """
@@ -61,146 +61,103 @@ def build_file_tree(root_path, ignore_patterns=None):
     """
     # Default patterns to ignore
     default_patterns = ['.git', '__pycache__', '*.pyc', '.DS_Store', '.idea', '.vscode']
-    
+
     # Load patterns from .gitignore if it exists
     gitignore_patterns = load_gitignore_patterns(root_path)
-    
-    # Combine ignore patterns, with .gitignore patterns taking precedence
+
+    # Combine ignore patterns
     if ignore_patterns is None:
-        ignore_patterns = default_patterns + gitignore_patterns
+        all_ignore_patterns = default_patterns + gitignore_patterns
     else:
-        ignore_patterns = ignore_patterns + gitignore_patterns
+        all_ignore_patterns = ignore_patterns + gitignore_patterns
 
-    def should_ignore(path):
-        """
-        Checks if the given path matches a pattern that should be ignored.
-
-        Args:
-            path (str): The path to check.
-
-        Returns:
-            bool: True if it should be ignored, False otherwise
-        """
-        return should_ignore_path(path, ignore_patterns)
+    def is_ignored(path):
+        """Checks if a given path should be ignored."""
+        return should_ignore_path(path, all_ignore_patterns)
 
     root_name = os.path.basename(root_path.rstrip(os.sep))
-    if not root_name:  # 루트 디렉토리 경우
+    if not root_name:  # Handle root directory case like '/'
         root_name = root_path
 
     root_node = Node(root_name, True)
-    root_node.full_path = root_path  # 루트 노드에 절대 경로 저장
+    root_node.full_path = root_path
 
-    def add_path(current_node, path_parts, full_path):
-        """
-        Adds each part of the path to the tree.
-        
-        Args:
-            current_node (Node): Current node
-            path_parts (list): List of path parts
-            full_path (str): Full path
-        """
-        if not path_parts:
-            return
+    # A map from full directory paths to their corresponding Node objects
+    dir_nodes = {root_path: root_node}
 
-        part = path_parts[0]
-        remaining = path_parts[1:]
+    for dirpath, dirnames, filenames in os.walk(root_path, topdown=True):
+        # Prune ignored directories from traversal. This is the correct way to use os.walk.
+        dirnames[:] = [d for d in dirnames if not is_ignored(os.path.join(dirpath, d))]
 
-        if should_ignore(os.path.join(full_path, part)):
-            return
+        # Get the parent node for the current directory being processed
+        parent_node = dir_nodes.get(dirpath)
+        if not parent_node:
+            continue
 
-        # 이미 부분이 존재하는지 확인
-        if part in current_node.children:
-            child = current_node.children[part]
-        else:
-            is_dir = os.path.isdir(os.path.join(full_path, part))
-            child = Node(part, is_dir, current_node)
-            current_node.children[part] = child
+        # Add subdirectory nodes to the tree
+        for dirname in sorted(dirnames):
+            full_dir_path = os.path.join(dirpath, dirname)
+            dir_node = Node(dirname, True, parent=parent_node)
+            parent_node.children[dirname] = dir_node
+            # Add the new directory node to our map so we can find it later
+            dir_nodes[full_dir_path] = dir_node
 
-        # 남은 부분이 있으면 재귀적으로 계속
-        if remaining:
-            next_path = os.path.join(full_path, part)
-            add_path(child, remaining, next_path)
-
-    # 디렉토리 구조 순회
-    for dirpath, dirnames, filenames in os.walk(root_path):
-        # 필터링된 디렉토리 건너뛰기
-        dirnames[:] = [d for d in dirnames if not should_ignore(os.path.join(dirpath, d))]
-
-        rel_path = os.path.relpath(dirpath, root_path)
-        if rel_path == '.':
-            # 루트에 있는 파일 추가
-            for filename in filenames:
-                full_path = os.path.join(dirpath, filename)
-                if filename not in root_node.children and not should_ignore(full_path):
-                    file_node = Node(filename, False, root_node)
-                    root_node.children[filename] = file_node
-        else:
-            # 디렉토리 추가
-            path_parts = rel_path.split(os.sep)
-            add_path(root_node, path_parts, root_path)
-
-            # 이 디렉토리에 있는 파일 추가
-            current = root_node
-            for part in path_parts:
-                if part in current.children:
-                    current = current.children[part]
-                else:
-                    # 디렉토리가 필터링된 경우 건너뛰기
-                    break
-            else:
-                for filename in filenames:
-                    full_path = os.path.join(dirpath, filename)
-                    if not should_ignore(full_path) and filename not in current.children:
-                        file_node = Node(filename, False, current)
-                        current.children[filename] = file_node
+        # Add file nodes to the tree
+        for filename in sorted(filenames):
+            full_file_path = os.path.join(dirpath, filename)
+            if not is_ignored(full_file_path):
+                file_node = Node(filename, False, parent=parent_node)
+                parent_node.children[filename] = file_node
 
     return root_node
 
 def flatten_tree(node, visible_only=True):
     """
     Flattens the tree into a list of nodes for navigation.
-    
+
     Args:
-        node (Node): Root node
+        node (Node): Root node of the subtree to flatten.
         visible_only (bool, optional): Whether to include only visible nodes.
-        
+
     Returns:
         list: a list of (node, level) tuples.
     """
     flat_nodes = []
 
-    def _traverse(node, level=0):
+    def _traverse(current_node, level):
         """
-        Traverse the tree and generate a flattened list of nodes.
-        
+        Recursively traverse the tree and build a flat list.
+
         Args:
-            node (Node): The current node
-            level (int, optional): Current level
+            current_node (Node): The node to process children of.
+            level (int): The level for the children of current_node.
         """
-        # 루트 노드는 건너뛰되, 루트의 자식부터는 level 0으로 시작
-        if node.parent is not None:  # 루트 노드 건너뛰기
-            flat_nodes.append((node, level))
+        # We only process children if the directory is expanded
+        if not current_node.is_dir or not current_node.children:
+            return
 
-        if node.is_dir and node.children and (not visible_only or node.expanded):
-            # 먼저 디렉토리, 그 다음 파일, 알파벳 순으로 정렬
-            items = sorted(node.children.items(),
-                          key=lambda x: (not x[1].is_dir, x[0].lower()))
+        if visible_only and not current_node.expanded:
+            return
 
-            for _, child in items:
-                # 루트의 직계 자식들은 level 0, 그 아래부터는 level+1
-                next_level = 0 if node.parent is None else level + 1
-                _traverse(child, next_level)
+        items = sorted(current_node.children.items(),
+                       key=lambda x: (not x[1].is_dir, x[0].lower()))
 
-    _traverse(node)
+        for _, child in items:
+            flat_nodes.append((child, level))
+            # Recurse for the child's children at the next level
+            _traverse(child, level + 1)
+
+    # Start traversal on the root node. Its children will be at level 0.
+    _traverse(node, 0)
     return flat_nodes
 
 def count_selected_files(node):
     """
     Count the number of selected files (excluding directories).
-    
+
     Args:
         node (Node): The root node.
-        
+
     Returns:
         int: Number of selected files
     """
@@ -215,11 +172,11 @@ def count_selected_files(node):
 def collect_selected_content(node, root_path):
     """
     Gather the contents of the selected files.
-    
+
     Args:
         node (Node): Root node
         root_path (str): Root directory path
-        
+
     Returns:
         list: a list of (file path, content) tuples.
     """
@@ -256,11 +213,11 @@ def collect_selected_content(node, root_path):
 def collect_all_content(node, root_path):
     """
     Collect the contents of all files (for analysis).
-    
+
     Args:
         node (Node): Root node
         root_path (str): Root directory path
-        
+
     Returns:
         list: a list of (file path, content) tuples.
     """
