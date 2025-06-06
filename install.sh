@@ -34,8 +34,14 @@ done
 CODESELECT_PATH="$USER_BIN/codeselect"
 cat > "$CODESELECT_PATH" << 'EOF'
 #!/bin/bash
+# This wrapper script ensures that the python script is run from its installation
+# directory, which allows all of its internal imports to work correctly.
+
 SCRIPT_DIR="$HOME/.local/lib/codeselect"
-python3 "$SCRIPT_DIR/codeselect.py" "$@"
+
+# Use a subshell to change directory, so it doesn't affect the user's terminal.
+# All command-line arguments ("$@") are forwarded to the python script.
+(cd "$SCRIPT_DIR" && python3 codeselect.py "$@")
 EOF
 
 # Make the script executable
@@ -67,6 +73,8 @@ if [[ ":$PATH:" != *":$USER_BIN:"* ]]; then
 
     # Add to PATH (fish 쉘이 아닌 경우)
     if [[ "$SHELL" != *"fish"* ]]; then
+        echo '' >> "$SHELL_CONFIG"
+        echo '# Add CodeSelect to PATH' >> "$SHELL_CONFIG"
         echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$SHELL_CONFIG"
         echo "Added $USER_BIN to your PATH in $SHELL_CONFIG"
         echo "To use immediately, run: source $SHELL_CONFIG"
@@ -83,7 +91,7 @@ Usage:
 
 Features:
   - Automatically respects .gitignore patterns in your project
-  - Interactive file selection with tree view 
+  - Interactive file selection with tree view
   - Multiple output formats for different AI assistants
 
 CodeSelect is now installed at: $CODESELECT_PATH
@@ -92,9 +100,9 @@ All modules installed at: $CODESELECT_DIR
 
 # Try to add tab completion for bash
 if [[ "$SHELL" == *"bash"* ]]; then
-    COMPLETION_FILE="$HOME/.local/share/bash-completion/completions"
-    mkdir -p "$COMPLETION_FILE"
-    cat > "$COMPLETION_FILE/codeselect" << 'EOF'
+    COMPLETION_DIR="$HOME/.local/share/bash-completion/completions"
+    mkdir -p "$COMPLETION_DIR"
+    cat > "$COMPLETION_DIR/codeselect" << 'EOF'
 _codeselect_completion() {
     local cur prev opts
     COMPREPLY=()
