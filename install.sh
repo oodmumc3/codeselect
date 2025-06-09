@@ -19,7 +19,7 @@ MODULES=("codeselect.py" "cli.py" "utils.py" "filetree.py" "selector.py" "select
 
 for MODULE in "${MODULES[@]}"; do
   echo "Installing $MODULE..."
-  curl -fsSL "https://raw.githubusercontent.com/maynetee/codeselect/main/$MODULE" -o "$CODESELECT_DIR/$MODULE" 2>/dev/null || {
+  curl -fsSL "https://raw.githubusercontent.com/oodmumc3/codeselect/main/$MODULE" -o "$CODESELECT_DIR/$MODULE" 2>/dev/null || {
     # curl이 실패하면 로컬 파일에서 복사
     if [ -f "$MODULE" ]; then
       cp "$MODULE" "$CODESELECT_DIR/$MODULE"
