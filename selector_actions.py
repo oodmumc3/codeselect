@@ -97,68 +97,83 @@ def expand_all(root_node, expand=True):
     _set_expanded(root_node, expand)
     return flatten_tree(root_node)
 
-def apply_search_filter(search_query, case_sensitive, root_node, original_nodes, visible_nodes_out):
+def apply_search_filter(search_queries: list[str], case_sensitive: bool, root_node, original_nodes: list, visible_nodes_out: list):
     """
-    Filter files based on search terms.
+    Filter files based on a list of search queries.
     
     Args:
-        search_query (str): The search query
-        case_sensitive (bool): Whether the search is case sensitive
-        root_node (Node): The root node
-        original_nodes (list): The original list of nodes
-        visible_nodes_out (list): Output parameter for the filtered nodes
+        search_queries (list[str]): The list of search queries.
+        case_sensitive (bool): Whether the search is case sensitive.
+        root_node (Node): The root node of the file tree.
+        original_nodes (list): The original list of nodes to restore if search is cleared or invalid.
+        visible_nodes_out (list): Output parameter for the filtered list of (Node, level) tuples.
         
     Returns:
         tuple: (success, error_message)
+               success (bool): True if the filter was applied successfully or cleared, False otherwise.
+               error_message (str): An error message if success is False, otherwise an empty string.
     """
-    if not search_query:
+    if not search_queries or all(not query or query.isspace() for query in search_queries):
         visible_nodes_out[:] = original_nodes
         return True, ""
 
-    try:
-        # 정규식 플래그 설정
-        flags = 0 if case_sensitive else re.IGNORECASE
-        pattern = re.compile(search_query, flags)
-        
-        # 전체 노드 목록 가져오기
-        all_nodes = flatten_tree(root_node)
-        
-        # 정규식과 일치하는 노드들을 찾음
-        matching_nodes = [
-            node for node, _ in all_nodes
-            if not node.is_dir and pattern.search(node.name)
-        ]
-        
-        # 일치하는 노드가 없으면 알림 표시 후 원래 목록으로 복원
-        if not matching_nodes:
-            visible_nodes_out[:] = original_nodes
-            return False, "검색 결과 없음"
-            
-        # 일치하는 노드의 모든 부모 노드를 수집
-        visible_nodes_set = set(matching_nodes)
-        for node in matching_nodes:
-            # 노드의 모든 부모 추가
-            parent = node.parent
-            while parent:
-                visible_nodes_set.add(parent)
-                parent = parent.parent
-        
-        # 트리 구조를 유지하며 노드들 정렬
-        visible_nodes_out[:] = [
-            (node, level) for node, level in all_nodes
-            if node in visible_nodes_set or (node.is_dir and node.children and 
-                any(child in visible_nodes_set for child in node.children.values()))
-        ]
-        
-        # 루트 노드를 결과에 포함 (테스트 케이스 요구사항)
-        if not any(node[0] == root_node for node in visible_nodes_out):
-            visible_nodes_out.insert(0, (root_node, 0))
-        
+    compiled_patterns = []
+    flags = 0 if case_sensitive else re.IGNORECASE
+
+    for query in search_queries:
+        if query and not query.isspace():
+            try:
+                compiled_patterns.append(re.compile(query, flags))
+            except re.error:
+                return False, "잘못된 정규식" # Invalid regular expression
+
+    if not compiled_patterns: # All queries were empty or whitespace
+        visible_nodes_out[:] = original_nodes
         return True, ""
+
+    all_nodes = flatten_tree(root_node) # This gives a list of (Node, level) tuples
+
+    matching_file_nodes = []
+    for node, level in all_nodes:
+        if not node.is_dir: # Only match against file names
+            for pattern in compiled_patterns:
+                if pattern.search(node.name):
+                    matching_file_nodes.append(node)
+                    break # OR condition: if one pattern matches, it's a match
+
+    if not matching_file_nodes:
+        visible_nodes_out[:] = [] # Empty list as per requirement
+        return False, "검색 결과 없음" # No search results
         
-    except re.error:
-        # 잘못된 정규식
-        return False, "잘못된 정규식"
+    visible_nodes_set = set(matching_file_nodes)
+    for node in matching_file_nodes:
+        parent = node.parent
+        while parent:
+            visible_nodes_set.add(parent)
+            parent = parent.parent
+
+    # Preserve original tree order and structure for visible nodes
+    # all_nodes is already in the correct order
+    filtered_visible_nodes = []
+    for node, level in all_nodes:
+        if node in visible_nodes_set:
+            filtered_visible_nodes.append((node, level))
+            # Ensure parent directories are expanded if they have visible children
+            if node.is_dir and node.children and any(child in visible_nodes_set for child in node.children.values()):
+                node.expanded = True
+
+
+    visible_nodes_out[:] = filtered_visible_nodes
+
+    # It's possible that root_node itself is not in visible_nodes_set (e.g. if it's a dir and has no matching children)
+    # However, the prompt implies that original tree structure should be preserved for *these* visible nodes.
+    # If visible_nodes_out is not empty, and root_node is an ancestor of some node in visible_nodes_out,
+    # it should be included. The current logic with visible_nodes_set and iterating all_nodes should handle this.
+    # The old check `if not any(node[0] == root_node for node in visible_nodes_out):` might be too aggressive
+    # if the root itself doesn't match and has no direct matching children but is an ancestor.
+    # The current construction of `filtered_visible_nodes` should correctly include the root if it's part of the path to a visible node.
+
+    return True, ""
 
 def toggle_current_dir_selection(current_node):
     """
